@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corrected Milkdrop-style WebGL Visualizer</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: black;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #error-message {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: red;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        #legend {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <div id="error-message"></div>
+	<div id="legend">
+		Space: Pause/Resume
+		S: Change Shape
+		Z: Zoom
+		W: Wave Effect
+		B: Bokeh Effect
+		T: Time Scaling
+		P: Change Palette
+		R: Reset to Defaults
+		F: Cycle Filters
+	</div>
+    <script>
+		const DEFAULT_ZOOM = 1.0;
+		const DEFAULT_WAVE_EFFECT = 0.0;
+		const DEFAULT_BOKEH_EFFECT = 0.0;
+		const DEFAULT_TIME_SCALE = 1.0;
+		const DEFAULT_SHAPE_INDEX = 0;
+		const DEFAULT_PALETTE_INDEX = 0;
+        const canvas = document.getElementById('visualizer');
+        const gl = canvas.getContext('webgl');
+        const errorMessageElement = document.getElementById('error-message');
+        const legendElement = document.getElementById('legend');
+
+		function resetToDefaults() {
+			zoom = DEFAULT_ZOOM;
+			waveEffect = DEFAULT_WAVE_EFFECT;
+			bokehEffect = DEFAULT_BOKEH_EFFECT;
+			timeScale = DEFAULT_TIME_SCALE;
+			shapeIndex = DEFAULT_SHAPE_INDEX;
+			paletteIndex = DEFAULT_PALETTE_INDEX;
+			activeMode = 'zoom';
+			activeFilter = 0;
+			filterIntensity = 0.5;
+			
+		}
+
+        function displayError(message) {
+            console.error(message);
+            errorMessageElement.textContent += message + '\n';
+        }
+
+        if (!gl) {
+            displayError('WebGL not supported');
+            throw new Error('WebGL not supported');
+        }
+
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0, 1);
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision highp float;
+            uniform vec2 u_resolution;
+            uniform float u_time;
+            uniform vec2 u_mouse;
+            uniform float u_mousePressed;
+            uniform float u_zoom;
+            uniform float u_waveEffect;
+            uniform float u_bokehEffect;
+            uniform int u_paletteIndex;
+            uniform int u_shapeIndex;
+			uniform int u_filter;
+			uniform float u_filterIntensity;
+
+            vec3 palette0(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.263, 0.416, 0.557);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            vec3 palette1(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 0.5);
+                vec3 d = vec3(0.80, 0.90, 0.30);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            vec3 palette2(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 0.7, 0.4);
+                vec3 d = vec3(0.00, 0.15, 0.20);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            vec3 palette3(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(2.0, 1.0, 0.0);
+                vec3 d = vec3(0.50, 0.20, 0.25);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            vec3 palette4(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(0.8, 0.8, 0.8);
+                vec3 d = vec3(0.2, 0.4, 0.2);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            vec3 palette5(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 0.7, 0.7);
+                vec3 d = vec3(0.0, 0.15, 0.3);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            vec3 getPaletteColor(float t) {
+                if (u_paletteIndex == 0) return palette0(t);
+                if (u_paletteIndex == 1) return palette1(t);
+                if (u_paletteIndex == 2) return palette2(t);
+                if (u_paletteIndex == 3) return palette3(t);
+                if (u_paletteIndex == 4) return palette4(t);
+                return palette5(t);
+            }
+
+            vec2 wave(vec2 uv, float time, float strength) {
+                float frequency = 10.0;
+                float amplitude = 0.1 * strength;
+                float oscillation = sin(time * 2.0) * 0.5 + 0.5;
+                
+                uv.x += sin(uv.y * frequency + time * 3.0) * amplitude * oscillation;
+                uv.y += sin(uv.x * frequency + time * 2.0) * amplitude * (1.0 - oscillation);
+                
+                return uv;
+            }
+
+            vec3 bokeh(vec3 color, vec2 uv, float strength) {
+                float bokehSize = 4.0 * strength / u_resolution.x;
+                vec3 bokehColor = vec3(0.0);
+                float total = 0.0;
+                for(float x = -2.0; x <= 2.0; x += 1.0) {
+                    for(float y = -2.0; y <= 2.0; y += 1.0) {
+                        vec2 offset = vec2(x, y) * bokehSize;
+                        float weight = 1.0 - length(offset) / (bokehSize * 2.0);
+                        vec2 sampleUV = uv + offset;
+                        vec3 sampleColor = getPaletteColor(length(sampleUV) + u_time * 0.4);
+                        bokehColor += sampleColor * weight;
+                        total += weight;
+                    }
+                }
+                return mix(color, bokehColor / total, strength);
+            }
+			
+			vec3 applyFilter(vec3 color) {
+				if (u_filter == 1) {
+					// Sepia filter
+					float r = color.r * 0.393 + color.g * 0.769 + color.b * 0.189;
+					float g = color.r * 0.349 + color.g * 0.686 + color.b * 0.168;
+					float b = color.r * 0.272 + color.g * 0.534 + color.b * 0.131;
+					return mix(color, vec3(r, g, b), u_filterIntensity);
+				} else if (u_filter == 2) {
+					// Invert filter
+					return mix(color, 1.0 - color, u_filterIntensity);
+				} else if (u_filter == 3) {
+					// Grayscale filter
+					float gray = dot(color, vec3(0.299, 0.587, 0.114));
+					return mix(color, vec3(gray), u_filterIntensity);
+				} else if (u_filter == 4) {
+					// High contrast filter
+					vec3 contrast = (color - 0.5) * (1.0 + u_filterIntensity) + 0.5;
+					return clamp(contrast, 0.0, 1.0);
+				} else if (u_filter == 5) {
+					// Hue shift filter
+					vec3 k = vec3(0.57735, 0.57735, 0.57735);
+					float cosAngle = cos(u_filterIntensity * 3.14159265359);
+					return vec3(color * cosAngle + cross(k, color) * sin(u_filterIntensity * 3.14159265359) + k * dot(k, color) * (1.0 - cosAngle));
+				}
+				return color;
+			}
+
+			float getShape(vec2 uv, int shapeIndex) {
+				if (shapeIndex <= 0) {
+					return length(uv); // Original circular shape
+				} else {
+					int sides = shapeIndex + 2; // 3 to 9 sides for polygons
+					float a = atan(uv.x, uv.y) + 3.14159265359;
+					float r = 6.28318530718 / float(sides);
+					return cos(floor(0.5 + a / r) * r - a) * length(uv);
+				}
+			}
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution) / min(u_resolution.x, u_resolution.y);
+                uv *= u_zoom;
+                
+                if (u_waveEffect > 0.0) {
+                    uv = wave(uv, u_time, u_waveEffect);
+                }
+                
+                vec2 uv0 = uv;
+                vec3 finalColor = vec3(0.0);
+                
+                vec2 mouse = u_mouse / u_resolution * 2.0 - 1.0;
+                mouse.y *= -1.0;
+                float mouseInfluence = u_mousePressed * length(uv - mouse) * 2.0;
+
+                for (float i = 0.0; i < 4.0; i++) {
+                    float shapeValue = getShape(uv, u_shapeIndex);
+                    float d = shapeValue * exp(-length(uv0));
+                    vec3 col = getPaletteColor(length(uv0) + i*.4 + u_time*.4);
+                    d = sin(d*8. + u_time + mouseInfluence)/8.;
+                    d = abs(d);
+                    d = pow(0.01 / d, 1.2);
+                    finalColor += col * d;
+                    uv = fract(uv * 1.5) - 0.5;
+                }
+
+                if (u_bokehEffect > 0.0) {
+                    finalColor = bokeh(finalColor, uv0, u_bokehEffect);
+                }
+
+				finalColor = applyFilter(finalColor);
+				gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                displayError(`An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`);
+                gl.deleteShader(shader);
+                return null;
+            }
+            
+            return shader;
+        }
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        if (!vertexShader || !fragmentShader) {
+            displayError('Failed to create shaders');
+            throw new Error('Failed to create shaders');
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            displayError(`Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`);
+            throw new Error('Failed to link program');
+        }
+
+        const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = [-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        const resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
+        const timeUniformLocation = gl.getUniformLocation(program, "u_time");
+        const mouseUniformLocation = gl.getUniformLocation(program, "u_mouse");
+        const mousePressedUniformLocation = gl.getUniformLocation(program, "u_mousePressed");
+        const zoomUniformLocation = gl.getUniformLocation(program, "u_zoom");
+        const waveEffectUniformLocation = gl.getUniformLocation(program, "u_waveEffect");
+        const bokehEffectUniformLocation = gl.getUniformLocation(program, "u_bokehEffect");
+        const paletteIndexUniformLocation = gl.getUniformLocation(program, "u_paletteIndex");
+        const shapeIndexUniformLocation = gl.getUniformLocation(program, "u_shapeIndex");
+		const filterUniformLocation = gl.getUniformLocation(program, "u_filter");
+		const filterIntensityUniformLocation = gl.getUniformLocation(program, "u_filterIntensity");
+
+        function resizeCanvasToDisplaySize(canvas) {
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+                gl.viewport(0, 0, width, height);
+            }
+        }
+
+        let mouseX = 0, mouseY = 0, mousePressed = 0, zoom = 1.0;
+        let waveEffect = 0.0, bokehEffect = 0.0;
+        let activeMode = 'zoom';
+        let paletteIndex = 0, shapeIndex = 0;
+        let isPaused = false;
+        let timeScale = 1.0;
+        let lastTime = 0;
+        let currentTime = 0;
+		let activeFilter = 0;
+		let filterIntensity = 0.5;
+
+        canvas.addEventListener('mousedown', () => mousePressed = 1);
+        canvas.addEventListener('mouseup', () => mousePressed = 0);
+        canvas.addEventListener('mouseleave', () => mousePressed = 0);
+        canvas.addEventListener('mousemove', (event) => {
+            if (mousePressed) {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = event.clientX - rect.left;
+                mouseY = rect.height - (event.clientY - rect.top);
+            }
+        });
+
+        canvas.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            switch (activeMode) {
+                case 'zoom':
+                    zoom *= 1 + event.deltaY * -0.001;
+                    zoom = Math.max(0.1, Math.min(zoom, 10.0));
+                    break;
+                case 'wave':
+                    waveEffect = Math.max(0, Math.min(waveEffect + event.deltaY * -0.001, 1));
+                    break;
+                case 'bokeh':
+                    bokehEffect = Math.max(0, Math.min(bokehEffect + event.deltaY * -0.001, 1));
+                    break;
+                case 'time':
+                    timeScale *= 1 + event.deltaY * -0.001;
+                    timeScale = Math.max(0.01, Math.min(timeScale, 5.0)); // Extended range for slower speeds
+                    break;
+				case 'filter':
+					filterIntensity = Math.max(0, Math.min(filterIntensity + event.deltaY * -0.001, 1));
+					break;
+            }
+        });
+
+        let legendTimeout;
+        function showLegend() {
+            legendElement.style.opacity = "1";
+            clearTimeout(legendTimeout);
+            legendTimeout = setTimeout(() => {
+                legendElement.style.opacity = "0";
+            }, 3000);
+        }
+
+        window.addEventListener('keydown', (event) => {
+            switch(event.key.toLowerCase()) {
+                case ' ':
+                    isPaused = !isPaused;
+                    showLegend();
+                    break;
+                case 'w':
+                    activeMode = 'wave';
+                    showLegend();
+                    break;
+                case 'b':
+                    activeMode = 'bokeh';
+                    showLegend();
+                    break;
+                case 'z':
+                    activeMode = 'zoom';
+                    showLegend();
+                    break;
+                case 't':
+                    activeMode = 'time';
+                    showLegend();
+                    break;
+				case 's':
+					shapeIndex = (shapeIndex + 1) % 9; // 9 shapes (0 to 8)
+					if (shapeIndex === 0) {
+						shapeIndex = -1; // Set to -1 so that the next press will go to 0 (circle)
+					}
+					showLegend();
+					break;
+                case 'p':
+                    paletteIndex = (paletteIndex + 1) % 6;
+                    showLegend();
+                    break;
+		        case 'r':
+					resetToDefaults();
+					showLegend();
+					break;
+				case 'f':
+					activeFilter = (activeFilter + 1) % 6; // 0 is no filter, 1-5 are filters
+					activeMode = 'filter';
+					showLegend();
+					break;
+            }
+        });
+
+        function render(time) {
+            time *= 0.001;
+            
+            if (!isPaused) {
+                currentTime += (time - lastTime) * timeScale;
+            }
+            lastTime = time;
+
+            resizeCanvasToDisplaySize(gl.canvas);
+
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(timeUniformLocation, currentTime);
+            gl.uniform2f(mouseUniformLocation, mouseX, mouseY);
+            gl.uniform1f(mousePressedUniformLocation, mousePressed);
+            gl.uniform1f(zoomUniformLocation, 1 / zoom);
+            gl.uniform1f(waveEffectUniformLocation, waveEffect);
+            gl.uniform1f(bokehEffectUniformLocation, bokehEffect);
+            gl.uniform1i(paletteIndexUniformLocation, paletteIndex);
+            gl.uniform1i(shapeIndexUniformLocation, shapeIndex);
+			gl.uniform1i(filterUniformLocation, activeFilter);
+			gl.uniform1f(filterIntensityUniformLocation, filterIntensity);
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+
+        window.addEventListener('resize', () => resizeCanvasToDisplaySize(gl.canvas));
+    </script>
+</body>
+</html>
