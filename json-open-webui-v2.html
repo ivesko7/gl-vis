@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LLM Interactions Formatter</title>
+    <style>
+        body {
+            background-color: #2C2F33;
+            color: #C0C0C0;
+            font-family: Arial, sans-serif;
+            padding: 2px;
+        }
+        
+        #drop_zone {
+            border: 2px dashed #7289DA;
+            border-radius: 5px;
+            padding: 15px;
+            text-align: center;
+            border-color: var(--drop-zone-border-color);
+            margin: 2px 0;
+            cursor: pointer;
+            transition: all .3s ease-in-out;
+        }
+        
+        .title {
+            color: var(--title-color);
+            cursor: pointer;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+        }
+        .title span {
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .content {
+            display: none;
+            margin-left: 20px;
+            margin-top: 5px;
+        }
+        
+        :root {
+            --title-color: #8899A6;
+            --button-bg-color: #7289DA;
+            --button-text-color: #FFFFFF;
+            --button-hover-bg-color: #5B6EAE;
+            --drop-zone-border-color: #7289DA;
+        }
+
+        .user, .assistant {
+            margin-bottom: 10px;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .user {
+            background-color: var(--user-bg-color, #3A3F44);
+            color: var(--user-text-color, #FFFFFF);
+        }
+
+        .assistant {
+            background-color: var(--assistant-bg-color, #2E3338);
+            color: var(--assistant-text-color, #FFFFFF);
+        }
+
+        .control-buttons {
+            margin-bottom: 10px;
+        }
+        
+        button, select#themeSelector {
+            background-color: var(--button-bg-color);
+            color: var(--button-text-color);
+        }
+
+        button:hover {
+            background-color: var(--button-hover-bg-color);
+        }
+
+        .branch-selector {
+            display: inline-block;
+            margin-left: 10px;
+            font-size: 0.8em;
+            background-color: #4a4a4a;
+            padding: 2px 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .branch-nav {
+            cursor: pointer;
+            padding: 0 5px;
+            color: #ffffff;
+        }
+
+        .branch-counter {
+            margin: 0 5px;
+            color: #ffffff;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .message-container {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 10px;
+        }
+        .message {
+            flex-grow: 1;
+            margin-bottom: 5px;
+        }
+        .branch-selector {
+            align-self: flex-start;
+            white-space: nowrap;
+            margin-bottom: 5px;
+        }
+        .branch-content {
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+	<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px;">
+		<h1 style="margin-right: 20px;">LLM Interactions Formatter</h1>
+		<div id="drop_zone" style="margin-right: 20px;">Drop a file here or click to select</div>
+		<div style="display: flex; align-items: center;">
+			<input type="text" id="searchInput" placeholder="Search..." style="margin-right: 10px; padding: 5px;">
+			<button onclick="performSearch()" style="margin-right: 10px;">Search</button>
+			<button onclick="clearSearch()" style="margin-right: 10px;">Clear Search</button>
+			<select id="themeSelector" style="margin-right: 20px;">
+				<!-- Theme options here -->
+			</select>
+			<button onclick="expandAll()" style="margin-right: 10px;">Expand All</button>
+			<button onclick="collapseAll()" style="margin-right: 10px;">Collapse All</button>
+			<button onclick="changeTextSize(1)" style="margin-right: 5px;">A+</button>
+			<button onclick="changeTextSize(-1)" style="margin-right: 20px;">A-</button>
+			<button onclick="resetFontSize()">Reset</button>
+		</div>
+	</div>
+	<div id="jsonOutput"></div>
+
+    <script>
+        const dropZone = document.getElementById('drop_zone');
+        const jsonOutput = document.getElementById('jsonOutput');
+
+        dropZone.addEventListener('click', function() {
+            let input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'application/json,.json';
+            input.onchange = e => handleFile(e.target.files[0]);
+            input.click();
+        });
+
+        dropZone.addEventListener('dragover', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+
+        dropZone.addEventListener('drop', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            handleFile(e.dataTransfer.files[0]);
+        });
+
+        function handleFile(file) {
+            if (file) {
+                dropZone.classList.add('small');
+                let reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        let jsonObj = JSON.parse(e.target.result);
+                        displayInteractions(jsonObj, jsonOutput);
+                        cycleBranchSelectors();
+                    } catch (error) {
+                        console.error("Error parsing JSON:", error);
+                        jsonOutput.textContent = "Error parsing JSON: " + error.message;
+                    }
+                };
+                reader.onerror = function(e) {
+                    console.error("Error reading file:", e);
+                    jsonOutput.textContent = "Error reading file: " + e.target.error;
+                };
+                reader.readAsText(file);
+            }
+        }
+
+		function displayInteractions(dataArray, outputElement) {
+			outputElement.innerHTML = '';
+			document.getElementById('searchInput').value = '';
+            if (!Array.isArray(dataArray)) {
+                console.error("Invalid data format: expected an array");
+                outputElement.textContent = "Error: Invalid data format";
+                return;
+            }
+            dataArray.forEach(item => {
+                if (item.chat && item.chat.history && item.chat.history.messages) {
+                    const titleDiv = document.createElement('div');
+                    titleDiv.className = 'title';
+                    const toggleSpan = document.createElement('span');
+                    toggleSpan.textContent = '+';
+                    titleDiv.appendChild(toggleSpan);
+                    const titleText = document.createTextNode(item.chat.title || 'Untitled Chat');
+                    titleDiv.appendChild(titleText);
+                    outputElement.appendChild(titleDiv);
+
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'content';
+                    contentDiv.style.display = 'none';
+
+                    displayMessages(item.chat.history.messages, contentDiv);
+
+                    outputElement.appendChild(contentDiv);
+
+                    titleDiv.addEventListener('click', function() {
+                        const isExpanded = contentDiv.style.display === 'block';
+                        contentDiv.style.display = isExpanded ? 'none' : 'block';
+                        toggleSpan.textContent = isExpanded ? '+' : '-';
+                    });
+                } else {
+                    console.error("Invalid item structure", item);
+                }
+            });
+        }
+
+		function displayMessageChainRecursive(messageId, messages, container, depth = 0) {
+			const message = messages[messageId];
+			if (!message) return;
+
+			const messageContainer = document.createElement('div');
+			messageContainer.className = 'message-container';
+			// Remove the left margin based on depth
+			// messageContainer.style.marginLeft = `${depth * 5}px`;
+
+			const msgDiv = document.createElement('div');
+			msgDiv.className = `message ${message.role}`;
+			
+			// Preserve newlines by replacing them with <br> tags
+			const formattedContent = message.content.replace(/\n/g, '<br>');
+			msgDiv.innerHTML = formattedContent;
+			
+			messageContainer.appendChild(msgDiv);
+
+			container.appendChild(messageContainer);
+
+			if (message.childrenIds && message.childrenIds.length > 0) {
+				if (message.childrenIds.length > 1) {
+					const branchSelector = createBranchSelector(message, messages, messageContainer, depth);
+					messageContainer.appendChild(branchSelector);
+				} else {
+					// If there's only one child, display it immediately
+					displayMessageChainRecursive(message.childrenIds[0], messages, container, depth + 1);
+				}
+			}
+		}
+
+        function createBranchSelector(message, messages, container, depth) {
+            const selectorDiv = document.createElement('div');
+            selectorDiv.className = 'branch-selector';
+            
+            const totalBranches = message.childrenIds.length;
+            let currentIndex = totalBranches - 1; // Start with the last (newest) version
+
+            const prevButton = document.createElement('span');
+            prevButton.textContent = '<';
+            prevButton.className = 'branch-nav';
+            const nextButton = document.createElement('span');
+            nextButton.textContent = '>';
+            nextButton.className = 'branch-nav';
+            const counter = document.createElement('span');
+            counter.className = 'branch-counter';
+
+            function updateSelector() {
+                counter.textContent = `${currentIndex + 1}/${totalBranches}`;
+            }
+
+            function updateContent() {
+                // Find or create the branch content container
+                let branchContent = container.nextElementSibling;
+                if (!branchContent || !branchContent.classList.contains('branch-content')) {
+                    branchContent = document.createElement('div');
+                    branchContent.className = 'branch-content';
+                    if (container.nextSibling) {
+                        container.parentNode.insertBefore(branchContent, container.nextSibling);
+                    } else {
+                        container.parentNode.appendChild(branchContent);
+                    }
+                }
+
+                // Clear existing content
+                branchContent.innerHTML = '';
+
+                // Display the selected branch
+                const selectedChildId = message.childrenIds[currentIndex];
+                if (selectedChildId) {
+                    displayMessageChainRecursive(selectedChildId, messages, branchContent, depth + 1);
+                }
+            }
+
+            prevButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                currentIndex = (currentIndex - 1 + totalBranches) % totalBranches;
+                updateSelector();
+                updateContent();
+            });
+
+            nextButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                currentIndex = (currentIndex + 1) % totalBranches;
+                updateSelector();
+                updateContent();
+            });
+
+            selectorDiv.appendChild(prevButton);
+            selectorDiv.appendChild(counter);
+            selectorDiv.appendChild(nextButton);
+
+            updateSelector();
+            updateContent(); // Always display content immediately
+
+            return selectorDiv;
+        }
+
+        function displayMessages(messages, container) {
+            const rootMessageIds = Object.keys(messages).filter(id => messages[id].parentId === null);
+            
+            if (rootMessageIds.length > 1) {
+                const branchSelector = createTopLevelBranchSelector(rootMessageIds, messages, container);
+                container.appendChild(branchSelector);
+            } else if (rootMessageIds.length === 1) {
+                displayMessageChainRecursive(rootMessageIds[0], messages, container);
+            } else {
+                console.error("No root messages found");
+            }
+        }
+
+        function createTopLevelBranchSelector(rootIds, messages, container) {
+            const selectorDiv = document.createElement('div');
+            selectorDiv.className = 'branch-selector top-level';
+            
+            const totalBranches = rootIds.length;
+            let currentIndex = totalBranches - 1; // Start with the newest version
+
+            const prevButton = document.createElement('span');
+            prevButton.textContent = '<';
+            prevButton.className = 'branch-nav';
+            const nextButton = document.createElement('span');
+            nextButton.textContent = '>';
+            nextButton.className = 'branch-nav';
+            const counter = document.createElement('span');
+            counter.className = 'branch-counter';
+
+            function updateSelector() {
+                counter.textContent = `${currentIndex + 1}/${totalBranches}`;
+            }
+
+            function updateContent() {
+                container.querySelectorAll('.message-container, .branch-content, .branch-selector:not(.top-level)').forEach(el => el.remove());
+                displayMessageChainRecursive(rootIds[currentIndex], messages, container);
+            }
+
+            prevButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                currentIndex = (currentIndex - 1 + totalBranches) % totalBranches;
+                updateSelector();
+                updateContent();
+            });
+
+            nextButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                currentIndex = (currentIndex + 1) % totalBranches;
+                updateSelector();
+                updateContent();
+            });
+
+            selectorDiv.appendChild(prevButton);
+            selectorDiv.appendChild(counter);
+            selectorDiv.appendChild(nextButton);
+
+            updateSelector();
+            updateContent(); // Display the newest version initially
+
+            return selectorDiv;
+        }
+
+		// Add this CSS to your existing styles
+		const style = document.createElement('style');
+		style.textContent = `
+			body {
+				background-color: #2C2F33;
+				color: #C0C0C0;
+				font-family: Arial, sans-serif;
+				padding: 2px;
+			}
+			
+			#drop_zone {
+				border: 2px dashed #7289DA;
+				border-radius: 5px;
+				padding: 15px;
+				text-align: center;
+				border-color: var(--drop-zone-border-color);
+				margin: 2px 0;
+				cursor: pointer;
+				transition: all .3s ease-in-out;
+			}
+			
+			.title {
+				color: var(--title-color);
+				cursor: pointer;
+				margin-bottom: 5px;
+				display: flex;
+				align-items: center;
+			}
+			.title span {
+				margin-right: 10px;
+				cursor: pointer;
+			}
+			.content {
+				display: none;
+				margin-left: 20px;
+				margin-top: 5px;
+			}
+			
+			.user, .assistant {
+				margin-bottom: 10px;
+				padding: 5px;
+				border-radius: 4px;
+			}
+
+			.user {
+				background-color: var(--user-bg-color, #3A3F44);
+				color: var(--user-text-color, #FFFFFF);
+			}
+
+			.assistant {
+				background-color: var(--assistant-bg-color, #2E3338);
+				color: var(--assistant-text-color, #FFFFFF);
+			}
+
+			.control-buttons {
+				margin-bottom: 10px;
+			}
+			
+			button, select#themeSelector {
+				background-color: var(--button-bg-color);
+				color: var(--button-text-color);
+			}
+
+			button:hover {
+				background-color: var(--button-hover-bg-color);
+			}
+
+			.branch-selector {
+				display: inline-block;
+				margin-left: 10px;
+				font-size: 0.8em;
+				background-color: #4a4a4a;
+				padding: 2px 5px;
+				border-radius: 3px;
+				cursor: pointer;
+			}
+
+			.branch-nav {
+				cursor: pointer;
+				padding: 0 5px;
+				color: #ffffff;
+			}
+
+			.branch-counter {
+				margin: 0 5px;
+				color: #ffffff;
+			}
+			.message-container {
+				display: flex;
+				flex-direction: column;
+				margin-bottom: 5px;
+			}
+			.message {
+				flex-grow: 1;
+				margin-bottom: 5px;
+				white-space: pre-wrap;
+				word-wrap: break-word;
+				padding: 5px;
+				border-radius: 3px;
+			}
+			.message.user {
+				background-color: var(--user-bg-color);
+				color: var(--user-text-color);
+			}
+			.message.assistant {
+				background-color: var(--assistant-bg-color);
+				color: var(--assistant-text-color);
+			}
+			.branch-selector {
+				align-self: flex-start;
+				white-space: nowrap;
+				margin-bottom: 5px;
+			}
+			.branch-content {
+				margin-left: 0; /* Remove left margin */
+			}
+			.highlight {
+				background-color: var(--highlight-color);
+				color: inherit;
+			}
+
+		`;
+		document.head.appendChild(style);
+		
+        function cycleBranchSelectors() {
+            document.querySelectorAll('.branch-selector').forEach(selector => {
+                selector.querySelector('.branch-nav').click(); // Simulate a click on the previous button
+                setTimeout(() => {
+                    selector.querySelectorAll('.branch-nav')[1].click(); // Simulate a click on the next button
+                }, 100); // Adjust the delay if necessary
+            });
+        }
+		
+		function performSearch() {
+			const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+			const chatTitles = document.querySelectorAll('.title');
+			
+			chatTitles.forEach(titleDiv => {
+				const contentDiv = titleDiv.nextElementSibling;
+				const hasMatch = searchInChat(contentDiv, searchTerm);
+				
+				if (hasMatch) {
+					contentDiv.style.display = 'block';
+					titleDiv.querySelector('span').textContent = '-';
+				} else {
+					contentDiv.style.display = 'none';
+					titleDiv.querySelector('span').textContent = '+';
+				}
+			});
+		}
+
+		function searchInChat(contentDiv, searchTerm) {
+			let hasMatch = false;
+			const messages = contentDiv.querySelectorAll('.message');
+			
+			messages.forEach(message => {
+				const text = message.textContent.toLowerCase();
+				if (text.includes(searchTerm)) {
+					hasMatch = true;
+					highlightText(message, searchTerm);
+				} else {
+					removeHighlight(message);
+				}
+			});
+			
+			return hasMatch;
+		}
+
+		function highlightText(element, searchTerm) {
+			const innerHTML = element.innerHTML;
+			const index = innerHTML.toLowerCase().indexOf(searchTerm);
+			if (index >= 0) {
+				const highlightedHTML = innerHTML.substring(0, index) + 
+					"<mark class='highlight'>" + 
+					innerHTML.substring(index, index + searchTerm.length) + 
+					"</mark>" + 
+					innerHTML.substring(index + searchTerm.length);
+				element.innerHTML = highlightedHTML;
+			}
+		}
+
+		function removeHighlight(element) {
+			element.innerHTML = element.innerHTML.replace(/<mark class='highlight'>/g, '').replace(/<\/mark>/g, '');
+		}
+
+		function clearSearch() {
+			const searchInput = document.getElementById('searchInput');
+			searchInput.value = '';
+			
+			const chatTitles = document.querySelectorAll('.title');
+			chatTitles.forEach(titleDiv => {
+				const contentDiv = titleDiv.nextElementSibling;
+				contentDiv.style.display = 'none';
+				titleDiv.querySelector('span').textContent = '+';
+			});
+
+			const messages = document.querySelectorAll('.message');
+			messages.forEach(message => {
+				message.innerHTML = message.innerHTML.replace(/<mark class="highlight">/g, '').replace(/<\/mark>/g, '');
+			});
+		}
+
+        function expandAll() {
+            document.querySelectorAll('.content').forEach(div => {
+                div.style.display = 'block';
+                div.previousElementSibling.querySelector('span').textContent = '-';
+            });
+        }
+
+        function collapseAll() {
+            document.querySelectorAll('.content').forEach(div => {
+                div.style.display = 'none';
+                div.previousElementSibling.querySelector('span').textContent = '+';
+            });
+        }
+
+        function changeTextSize(delta) {
+            let currentSize = parseFloat(window.getComputedStyle(document.body).fontSize);
+            document.body.style.fontSize = `${currentSize + delta}px`;
+        }
+
+        function resetFontSize() {
+            document.body.style.fontSize = '16px';
+        }
+        
+		function applyTheme(theme) {
+			document.body.style.backgroundColor = theme.backgroundColor;
+			document.body.style.color = theme.color;
+			document.documentElement.style.setProperty('--title-color', theme.titleColor);
+			document.documentElement.style.setProperty('--user-bg-color', theme.userBackgroundColor);
+			document.documentElement.style.setProperty('--user-text-color', theme.userTextColor);
+			document.documentElement.style.setProperty('--assistant-bg-color', theme.assistantBackgroundColor);
+			document.documentElement.style.setProperty('--assistant-text-color', theme.assistantTextColor);
+			document.documentElement.style.setProperty('--button-bg-color', theme.buttonBackgroundColor);
+			document.documentElement.style.setProperty('--button-text-color', theme.buttonTextColor);
+			document.documentElement.style.setProperty('--button-hover-bg-color', theme.buttonHoverBackgroundColor);
+			document.documentElement.style.setProperty('--drop-zone-border-color', theme.dropZoneBorderColor);
+			document.documentElement.style.setProperty('--highlight-color', theme.highlightColor);
+			document.documentElement.style.setProperty('--search-input-bg', theme.searchInputBackground);
+			document.documentElement.style.setProperty('--search-input-text', theme.searchInputText);
+
+			// Apply theme to search input
+			const searchInput = document.getElementById('searchInput');
+			searchInput.style.backgroundColor = theme.searchInputBackground;
+			searchInput.style.color = theme.searchInputText;
+
+			// Force a redraw of all message elements to apply new theme
+			document.querySelectorAll('.message').forEach(el => {
+				el.style.display = 'none';
+				el.offsetHeight; // Trigger a reflow
+				el.style.display = '';
+			});
+		}
+
+        
+        function setCookie(name, value, days) {
+            var expires = "";
+            if (days) {
+                var date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (value || "") + expires + "; path=/";
+        }
+
+        function getCookie(name) {
+            var nameEQ = name + "=";
+            var ca = document.cookie.split(';');
+            for(var i = 0; i < ca.length; i++) {
+                var c = ca[i];
+                while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+		const themes = {
+			default: {
+				backgroundColor: '#2C2F33',
+				color: '#C0C0C0',
+				titleColor: '#8899A6',
+				userBackgroundColor: '#3A3F44',
+				userTextColor: '#B9BBBE',
+				assistantBackgroundColor: '#2E3338',
+				assistantTextColor: '#DCDDDE',
+				buttonBackgroundColor: '#7289DA',
+				buttonTextColor: '#FFFFFF',
+				buttonHoverBackgroundColor: '#5B6EAE',
+				dropZoneBorderColor: '#7289DA',
+				selectBackgroundColor: '#555B6E',
+				selectTextColor: '#E7E9EB',
+				highlightColor: 'rgba(255, 255, 0, 0.3)',
+				searchInputBackground: '#4A4D53',
+				searchInputText: '#FFFFFF'
+			},
+			dark: {
+				backgroundColor: '#121212',
+				color: '#E0E0E0',
+				titleColor: '#BB86FC',
+				userBackgroundColor: '#1D1D1D',
+				userTextColor: '#B9BBBE',
+				assistantBackgroundColor: '#252526',
+				assistantTextColor: '#DCDDDE',
+				buttonBackgroundColor: '#3A3B3C',
+				buttonTextColor: '#FFFFFF',
+				buttonHoverBackgroundColor: '#4E5052',
+				dropZoneBorderColor: '#3A3B3C',
+				selectBackgroundColor: '#2A2B2C',
+				selectTextColor: '#C0C0C0',
+				highlightColor: 'rgba(187, 134, 252, 0.3)',
+				searchInputBackground: '#2A2B2C',
+				searchInputText: '#E0E0E0'
+			},
+			light: {
+				backgroundColor: '#F5F5F5',
+				color: '#202124',
+				titleColor: '#1A73E8',
+				userBackgroundColor: '#FFFFFF',
+				userTextColor: '#404040',
+				assistantBackgroundColor: '#FFFFFF',
+				assistantTextColor: '#585858',
+				buttonBackgroundColor: '#E1E1E1',
+				buttonTextColor: '#000000',
+				buttonHoverBackgroundColor: '#C7C7C7',
+				dropZoneBorderColor: '#E1E1E1',
+				selectBackgroundColor: '#FFFFFF',
+				selectTextColor: '#000000',
+				highlightColor: 'rgba(26, 115, 232, 0.2)',
+				searchInputBackground: '#FFFFFF',
+				searchInputText: '#202124'
+			},
+			ocean: {
+				backgroundColor: '#224FBC',
+				color: '#FFFFFF',
+				titleColor: '#AED581',
+				userBackgroundColor: '#2D8FD5',
+				userTextColor: '#FFFFFF',
+				assistantBackgroundColor: '#2678B2',
+				assistantTextColor: '#FFFFFF',
+				buttonBackgroundColor: '#2678B2',
+				buttonTextColor: '#FFFFFF',
+				buttonHoverBackgroundColor: '#1B5E90',
+				dropZoneBorderColor: '#2678B2',
+				selectBackgroundColor: '#2678B2',
+				selectTextColor: '#FFFFFF',
+				highlightColor: 'rgba(174, 213, 129, 0.3)',
+				searchInputBackground: '#2678B2',
+				searchInputText: '#FFFFFF'
+			},
+			forest: {
+				backgroundColor: '#5A7247',
+				color: '#E0E0E0',
+				titleColor: '#F0F4C3',
+				userBackgroundColor: '#6B8050',
+				userTextColor: '#F0F4C3',
+				assistantBackgroundColor: '#4E5D39',
+				assistantTextColor: '#DADADA',
+				buttonBackgroundColor: '#4E5D39',
+				buttonTextColor: '#FFFFFF',
+				buttonHoverBackgroundColor: '#3B4A29',
+				dropZoneBorderColor: '#4E5D39',
+				selectBackgroundColor: '#4E5D39',
+				selectTextColor: '#FFFFFF',
+				highlightColor: 'rgba(240, 244, 195, 0.3)',
+				searchInputBackground: '#4E5D39',
+				searchInputText: '#FFFFFF'
+			},
+			solarizedDark: {
+				backgroundColor: '#002B36',
+				color: '#839496',
+				titleColor: '#93A1A1',
+				userBackgroundColor: '#073642',
+				userTextColor: '#839496',
+				assistantBackgroundColor: '#586E75',
+				assistantTextColor: '#EEE8D5',
+				buttonBackgroundColor: '#586E75',
+				buttonTextColor: '#FDF6E3',
+				buttonHoverBackgroundColor: '#657B83',
+				dropZoneBorderColor: '#586E75',
+				selectBackgroundColor: '#073642',
+				selectTextColor: '#FDF6E3',
+				highlightColor: 'rgba(147, 161, 161, 0.3)',
+				searchInputBackground: '#073642',
+				searchInputText: '#FDF6E3'
+			},
+			solarizedLight: {
+				backgroundColor: '#FDF6E3',
+				color: '#657B83',
+				titleColor: '#586E75',
+				userBackgroundColor: '#EEE8D5',
+				userTextColor: '#657B83',
+				assistantBackgroundColor: '#93A1A1',
+				assistantTextColor: '#586E75',
+				buttonBackgroundColor: '#93A1A1',
+				buttonTextColor: '#002B36',
+				buttonHoverBackgroundColor: '#839496',
+				dropZoneBorderColor: '#93A1A1',
+				selectBackgroundColor: '#EEE8D5',
+				selectTextColor: '#657B83',
+				highlightColor: 'rgba(88, 110, 117, 0.2)',
+				searchInputBackground: '#EEE8D5',
+				searchInputText: '#657B83'
+			},
+			monokai: {
+				backgroundColor: '#272822',
+				color: '#F8F8F2',
+				titleColor: '#F92672',
+				userBackgroundColor: '#383830',
+				userTextColor: '#A6E22E',
+				assistantBackgroundColor: '#383830',
+				assistantTextColor: '#AE81FF',
+				buttonBackgroundColor: '#A6E22E',
+				buttonTextColor: '#272822',
+				buttonHoverBackgroundColor: '#66D9EF',
+				dropZoneBorderColor: '#A6E22E',
+				selectBackgroundColor: '#75715E',
+				selectTextColor: '#F8F8F2',
+				highlightColor: 'rgba(166, 226, 46, 0.3)',
+				searchInputBackground: '#75715E',
+				searchInputText: '#F8F8F2'
+			},
+			deepSpace: {
+				backgroundColor: '#121212',
+				color: '#AAAAAA',
+				titleColor: '#555555',
+				userBackgroundColor: '#1A1A1A',
+				userTextColor: '#777777',
+				assistantBackgroundColor: '#1A1A1A',
+				assistantTextColor: '#999999',
+				buttonBackgroundColor: '#333333',
+				buttonTextColor: '#DDDDDD',
+				buttonHoverBackgroundColor: '#444444',
+				dropZoneBorderColor: '#333333',
+				selectBackgroundColor: '#242424',
+				selectTextColor: '#DDDDDD',
+				highlightColor: 'rgba(85, 85, 85, 0.3)',
+				searchInputBackground: '#242424',
+				searchInputText: '#DDDDDD'
+			},
+			vantaBlack: {
+				backgroundColor: '#000000',
+				color: '#636363',
+				titleColor: '#474747',
+				userBackgroundColor: '#333333',
+				userTextColor: '#cccccc',
+				assistantBackgroundColor: '#242424',
+				assistantTextColor: '#c5c5c5',
+				buttonBackgroundColor: '#343434',
+				buttonTextColor: '#ffffff',
+				buttonHoverBackgroundColor: '#454545',
+				dropZoneBorderColor: '#343434',
+				selectBackgroundColor: '#2B2B2B',
+				selectTextColor: '#ffffff',
+				highlightColor: 'rgba(71, 71, 71, 0.3)',
+				searchInputBackground: '#2B2B2B',
+				searchInputText: '#ffffff'
+			},
+			chatGPTDark: {
+				backgroundColor: '#0A0A0A',
+				color: '#D1D4D7',
+				titleColor: '#4A90E2',
+				userBackgroundColor: '#141414',
+				userTextColor: '#FFFFFF',
+				assistantBackgroundColor: '#1C1C1C',
+				assistantTextColor: '#D1D4D7',
+				buttonBackgroundColor: '#2B2B2B',
+				buttonTextColor: '#D1D4D7',
+				buttonHoverBackgroundColor: '#3C3F41',
+				dropZoneBorderColor: '#4A90E2',
+				selectBackgroundColor: '#2B2B2B',
+				selectTextColor: '#D1D4D7',
+				highlightColor: 'rgba(74, 144, 226, 0.3)',
+				searchInputBackground: '#2B2B2B',
+				searchInputText: '#D1D4D7'
+			},
+			windows11Light: {
+				backgroundColor: '#FFFFFF',
+				color: '#000000',
+				titleColor: '#0078D4',
+				userBackgroundColor: '#F3F3F3',
+				userTextColor: '#000000',
+				assistantBackgroundColor: '#EAEAEA',
+				assistantTextColor: '#000000',
+				buttonBackgroundColor: '#E1E1E1',
+				buttonTextColor: '#000000',
+				buttonHoverBackgroundColor: '#CCCCCC',
+				dropZoneBorderColor: '#0078D4',
+				selectBackgroundColor: '#F3F3F3',
+				selectTextColor: '#000000',
+				highlightColor: 'rgba(0, 120, 212, 0.2)',
+				searchInputBackground: '#F3F3F3',
+				searchInputText: '#000000'
+			},
+			windows11Dark: {
+				backgroundColor: '#1A1A1A',
+				color: '#E0E0E0',
+				titleColor: '#0078D4',
+				userBackgroundColor: '#242424',
+				userTextColor: '#FFFFFF',
+				assistantBackgroundColor: '#2E2E2E',
+				assistantTextColor: '#FFFFFF',
+				buttonBackgroundColor: '#313131',
+				buttonTextColor: '#FFFFFF',
+				buttonHoverBackgroundColor: '#3A3A3A',
+				dropZoneBorderColor: '#0078D4',
+				selectBackgroundColor: '#242424',
+				selectTextColor: '#E0E0E0',
+				highlightColor: 'rgba(0, 120, 212, 0.3)',
+				searchInputBackground: '#242424',
+				searchInputText: '#E0E0E0'
+			}
+		};
+
+		document.getElementById('themeSelector').addEventListener('change', function() {
+			applyTheme(themes[this.value]);
+			setCookie('theme', this.value, 30);
+		});
+
+		window.addEventListener('DOMContentLoaded', (event) => {
+			var savedTheme = getCookie('theme');
+			if (savedTheme && themes[savedTheme]) {
+				document.getElementById('themeSelector').value = savedTheme;
+				applyTheme(themes[savedTheme]);
+			} else {
+				applyTheme(themes['default']);
+			}
+		});
+		
+		document.getElementById('searchInput').addEventListener('keyup', function(event) {
+			if (event.key === 'Enter') {
+				performSearch();
+			}
+		});
+		
+    </script>
+</body>
+</html>
