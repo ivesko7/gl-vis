@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LLM Interactions Formatter</title>
+    <title>OpenWebUI JSON Chat Reader</title>
     <style>
         body {
             background-color: #2C2F33;
@@ -124,7 +124,7 @@
 </head>
 <body>
 	<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px;">
-		<h1 style="margin-right: 20px;">LLM Interactions Formatter</h1>
+		<h1 style="margin-right: 20px;">OpenWebUI JSON Chat Reader</h1>
 		<div id="drop_zone" style="margin-right: 20px;">Drop a file here or click to select</div>
 		<div style="display: flex; align-items: center;">
 			<input type="text" id="searchInput" placeholder="Search..." style="margin-right: 10px; padding: 5px;">
@@ -587,6 +587,29 @@
 				message.innerHTML = message.innerHTML.replace(/<mark class="highlight">/g, '').replace(/<\/mark>/g, '');
 			});
 		}
+		
+		function populateThemeSelector() {
+			const themeSelector = document.getElementById('themeSelector');
+			for (const [themeName, themeValue] of Object.entries(themes)) {
+				const option = document.createElement('option');
+				option.value = themeName;
+				option.textContent = themeName.charAt(0).toUpperCase() + themeName.slice(1).replace(/([A-Z])/g, ' $1').trim();
+				themeSelector.appendChild(option);
+			}
+		}
+
+		// Modify the existing DOMContentLoaded event listener
+		window.addEventListener('DOMContentLoaded', (event) => {
+			populateThemeSelector(); // Call the new function to populate the dropdown
+
+			var savedTheme = getCookie('theme');
+			if (savedTheme && themes[savedTheme]) {
+				document.getElementById('themeSelector').value = savedTheme;
+				applyTheme(themes[savedTheme]);
+			} else {
+				applyTheme(themes['default']);
+			}
+		});
 
         function expandAll() {
             document.querySelectorAll('.content').forEach(div => {
