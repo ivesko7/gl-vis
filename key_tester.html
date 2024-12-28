@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html class="dark">
+<head>
+    <title>Input Tester</title>
+    <style>
+        :root {
+            --bg-color: #f3f4f6;
+            --card-bg: white;
+            --text-color: #374151;
+            --text-secondary: #6b7280;
+            --display-bg: #f8f9fa;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --inner-shadow: rgba(0, 0, 0, 0.06);
+        }
+
+        .dark {
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #e5e5e5;
+            --text-secondary: #a0a0a0;
+            --display-bg: #202020;
+            --shadow-color: rgba(0, 0, 0, 0.3);
+            --inner-shadow: rgba(0, 0, 0, 0.2);
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            transition: background-color 0.3s ease;
+        }
+        
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            padding: 2rem;
+            width: 90%;
+            max-width: 600px;
+            text-align: center;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .display-area {
+            padding: 2rem;
+            background: var(--display-bg);
+            border-radius: 6px;
+            margin: 1rem 0;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: inset 0 2px 4px var(--inner-shadow);
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .input-display {
+            font-family: monospace;
+            font-size: 3rem;
+            margin: 0.5rem 0;
+            word-break: break-all;
+            color: var(--text-color);
+            transition: color 0.3s ease;
+        }
+        
+        .input-type {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+            transition: color 0.3s ease;
+        }
+        
+        .title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--text-color);
+            margin: 0;
+            transition: color 0.3s ease;
+        }
+        
+        .instructions {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-top: 1rem;
+            transition: color 0.3s ease;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: var(--display-bg);
+            border: 1px solid var(--text-secondary);
+            color: var(--text-color);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--text-secondary);
+            color: var(--display-bg);
+        }
+    </style>
+</head>
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()">Toggle Theme</button>
+    <div class="card">
+        <h1 class="title">Input Tester</h1>
+        <div class="display-area">
+            <div class="input-type">No input detected</div>
+            <div class="input-display">Press any key</div>
+        </div>
+        <p class="instructions">Press any key, mouse button, or gamepad button to test</p>
+    </div>
+
+    <script>
+        // Theme toggling
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        }
+
+        // Load saved theme preference
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'light') {
+            document.documentElement.classList.remove('dark');
+        }
+
+        const inputDisplay = document.querySelector('.input-display');
+        const inputType = document.querySelector('.input-type');
+
+        // Keyboard events
+        document.addEventListener('keydown', (event) => {
+            event.preventDefault();
+            let keyName = event.key;
+            
+            // Handle special cases
+            if (event.code.startsWith('F') && !isNaN(event.code.slice(1))) {
+                keyName = event.code; // Use code for F-keys to capture F1-F24
+            } else if (event.key === ' ') {
+                keyName = 'Space';
+            }
+            
+            inputDisplay.textContent = keyName;
+            inputType.textContent = 'Keyboard';
+        });
+
+        // Mouse events
+        document.addEventListener('mousedown', (event) => {
+            // Don't prevent default for the theme toggle button
+            if (!event.target.classList.contains('theme-toggle')) {
+                event.preventDefault();
+            }
+            
+            // Only process mouse events if we're not clicking the theme toggle
+            if (!event.target.classList.contains('theme-toggle')) {
+                let buttonName;
+                switch (event.button) {
+                    case 0:
+                        buttonName = 'Left Click';
+                        break;
+                    case 1:
+                        buttonName = 'Middle Click';
+                        break;
+                    case 2:
+                        buttonName = 'Right Click';
+                        break;
+                    case 3:
+                        buttonName = 'Mouse Button 4';
+                        break;
+                    case 4:
+                        buttonName = 'Mouse Button 5';
+                        break;
+                    default:
+                        buttonName = `Mouse Button ${event.button}`;
+                }
+                inputDisplay.textContent = buttonName;
+                inputType.textContent = 'Mouse';
+            }
+        });
+
+        // Prevent context menu for right-click detection
+        document.addEventListener('contextmenu', (e) => {
+            if (!e.target.classList.contains('theme-toggle')) {
+                e.preventDefault();
+            }
+        });
+
+        // Gamepad support
+        window.addEventListener('gamepadconnected', (e) => {
+            console.log('Gamepad connected:', e.gamepad);
+            // Poll for gamepad input
+            const pollGamepad = () => {
+                const gamepads = navigator.getGamepads();
+                for (const gamepad of gamepads) {
+                    if (!gamepad) continue;
+                    
+                    const pressedButtons = gamepad.buttons
+                        .map((button, index) => ({ index, pressed: button.pressed }))
+                        .filter(button => button.pressed);
+                    
+                    if (pressedButtons.length > 0) {
+                        inputDisplay.textContent = `Gamepad Button ${pressedButtons[0].index}`;
+                        inputType.textContent = 'Gamepad';
+                    }
+                }
+                requestAnimationFrame(pollGamepad);
+            };
+            pollGamepad();
+        });
+    </script>
+</body>
+</html>
