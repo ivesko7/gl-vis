@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 5px 10px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(5px);
+        }
+        #speedSlider {
+            width: 120px;
+            height: 3px;
+            accent-color: #4a9eff;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        #lineSlider {
+            width: 60px;
+            height: 3px;
+            accent-color: #4a9eff;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        .slider:hover {
+            opacity: 1;
+        }
+        #speedDisplay {
+            color: #fff;
+            font-size: 10px;
+            opacity: 0.7;
+            min-width: 35px;
+            text-align: right;
+        }
+        label {
+            color: #fff;
+            font-size: 10px;
+            opacity: 0.7;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <div id="controls">
+        <span id="speedDisplay">15%</span>
+        <input type="range" id="speedSlider" class="slider" min="0.5" max="200" value="15" title="Speed">
+        <input type="range" id="lineSlider" class="slider" min="1" max="25" value="6" title="Lines">
+    </div>
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const speedSlider = document.getElementById('speedSlider');
+        let speedMultiplier = 0.15; // Starting at 15%
+
+        // Set canvas size to window size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Update speed multiplier from slider
+        const speedDisplay = document.getElementById('speedDisplay');
+        speedSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            speedMultiplier = value / 100;
+            speedDisplay.textContent = value + '%';
+        });
+
+        // Particle system
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.life = Math.random() * 100 + 50;
+                this.maxLife = this.life;
+                this.size = Math.random() * 3 + 1;
+                this.hue = Math.random() * 60 + 180;
+            }
+
+            update() {
+                this.x += this.vx * speedMultiplier;
+                this.y += this.vy * speedMultiplier;
+                this.life -= speedMultiplier;
+
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+
+                if (this.life < 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 50%, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Wave system
+        class Wave {
+            constructor(type = 'normal') {
+                this.points = [];
+                this.numPoints = 100;
+                this.wavelength = Math.random() * 200 + 100;
+                this.amplitude = type === 'super' ? (Math.random() * 120 + 120) :  // 120-240 (was 100-200)
+                                type === 'enhanced' ? (Math.random() * 60 + 78) :  // 78-138 (was 65-115)
+                                Math.random() * 60 + 30;  // 30-90 (was 25-75)
+                this.speed = Math.random() * 0.02 + 0.01;
+                this.hue = type === 'super' ? Math.random() * 30 + 15 :
+                          type === 'enhanced' ? Math.random() * 40 + 60 :
+                          Math.random() * 60 + 280;
+                this.offset = 0;
+                this.type = type;
+
+                for (let i = 0; i < this.numPoints; i++) {
+                    this.points.push({
+                        x: (canvas.width * i) / (this.numPoints - 1),
+                        y: 0
+                    });
+                }
+            }
+
+            update() {
+                this.offset += this.speed * speedMultiplier;
+                for (let i = 0; i < this.numPoints; i++) {
+                    const x = (canvas.width * i) / (this.numPoints - 1);
+                    const y = Math.sin(i / this.wavelength + this.offset) * this.amplitude;
+                    this.points[i] = { x, y: y + canvas.height / 2 };
+                }
+            }
+
+            draw() {
+                ctx.strokeStyle = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, this.points[0].y);
+
+                for (let i = 1; i < this.points.length - 2; i++) {
+                    const xc = (this.points[i].x + this.points[i + 1].x) / 2;
+                    const yc = (this.points[i].y + this.points[i + 1].y) / 2;
+                    ctx.quadraticCurveTo(this.points[i].x, this.points[i].y, xc, yc);
+                }
+
+                ctx.stroke();
+            }
+        }
+
+        // Wave Particle system
+        class WaveParticle {
+            constructor(wave) {
+                this.reset(wave);
+            }
+
+            reset(wave) {
+                const pointIndex = Math.floor(Math.random() * wave.points.length);
+                const point = wave.points[pointIndex];
+                
+                this.x = point.x;
+                this.y = point.y;
+                this.x += (Math.random() - 0.5) * 20;
+                this.y += (Math.random() - 0.5) * 20;
+                
+                this.vx = (Math.random() - 0.5) * 1;
+                this.vy = (Math.random() - 0.5) * 1;
+                this.life = Math.random() * 30 + 10;
+                this.maxLife = this.life;
+                this.size = Math.random() * 2 + 0.5;
+                this.wave = wave;
+                this.hue = wave.hue + (Math.random() - 0.5) * 20;
+            }
+
+            update() {
+                this.x += this.vx * speedMultiplier;
+                this.y += this.vy * speedMultiplier;
+                this.life -= speedMultiplier;
+
+                if (this.life < 0) {
+                    this.reset(this.wave);
+                }
+            }
+
+            draw() {
+                const alpha = (this.life / this.maxLife) * 0.5;
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Create particles and waves with specific amplitude ranges for 6 lines
+        const particles = Array(100).fill().map(() => new Particle());
+        let waves = Array(6).fill().map((_, index) => {
+            if (index === 0) {
+                // Highest amplitude wave (super)
+                return new Wave('super');
+            } else if (index === 1) {
+                // Custom middle-high amplitude wave
+                const customType = {
+                    min: 90,
+                    max: 110,
+                    type: 'enhanced'
+                };
+                return new Wave(customType.type, customType);
+            } else if (index === 2) {
+                // Custom middle amplitude wave
+                const customType = {
+                    min: 40,
+                    max: 65,
+                    type: 'enhanced'
+                };
+                return new Wave(customType.type, customType);
+            } else {
+                // Lower amplitude waves (normal)
+                return new Wave('normal');
+            }
+        });
+        let waveParticles = waves.flatMap(wave => {
+            const count = wave.type === 'super' ? 60 :
+                         wave.type === 'enhanced' ? 40 : 20;
+            return Array(count).fill().map(() => new WaveParticle(wave));
+        });
+
+        // Update waves from slider
+        const lineSlider = document.getElementById('lineSlider');
+        lineSlider.addEventListener('input', (e) => {
+            const newCount = parseInt(e.target.value);
+            if (newCount > waves.length) {
+                while (waves.length < newCount) {
+                    let type = 'normal';
+                    if (waves.length % 10 === 0) {
+                        type = 'super';
+                    } else if (waves.length % 4 === 0) {
+                        type = 'enhanced';
+                    }
+                    const newWave = new Wave(type);
+                    waves.push(newWave);
+                    const particleCount = type === 'super' ? 60 :
+                                        type === 'enhanced' ? 40 : 20;
+                    const newParticles = Array(particleCount).fill().map(() => new WaveParticle(newWave));
+                    waveParticles = [...waveParticles, ...newParticles];
+                }
+            } else {
+                waves = waves.slice(0, newCount);
+                waveParticles = waves.flatMap(wave => {
+                    const count = wave.type === 'super' ? 60 :
+                                wave.type === 'enhanced' ? 40 : 20;
+                    return Array(count).fill().map(() => new WaveParticle(wave));
+                });
+            }
+        });
+
+        // Animation loop
+        let lastFrame = performance.now();
+        function animate(currentTime) {
+            // Calculate time since last frame for dynamic fade
+            const deltaTime = currentTime - lastFrame;
+            lastFrame = currentTime;
+            
+            // Dynamic fade based on speed and time
+            const fadeAlpha = Math.min(0.3, 0.1 + (speedMultiplier * 0.05));
+            ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Clear entire screen periodically to prevent persistent trails
+            if (Math.random() < 0.02) {  // ~Every 50 frames on average
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            waves.forEach(wave => {
+                wave.update();
+                wave.draw();
+            });
+
+            waveParticles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
