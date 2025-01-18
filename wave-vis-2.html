@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: rgb(0, 0, 0);
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 5px 10px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(5px);
+        }
+        .slider {
+            width: 120px;
+            height: 3px;
+            accent-color: #4a9eff;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        .slider:hover {
+            opacity: 1;
+        }
+        .display {
+            color: #fff;
+            font-size: 10px;
+            opacity: 0.7;
+            min-width: 35px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <div id="controls">
+        <label for="speedSlider" style="color: white; font-size: 10px; margin-right: 5px;">Speed:</label>
+        <span id="speedDisplay" class="display">15%</span>
+        <input type="range" id="speedSlider" class="slider" min="0.5" max="260" value="15" title="Speed">
+        
+        <label for="lineSlider" style="color: white; font-size: 10px; margin-left: 10px; margin-right: 5px;">Lines:</label>
+        <input type="range" id="lineSlider" class="slider" min="1" max="25" value="6" title="Lines">
+        
+        <span style="color: white; font-size: 10px; margin-left: 8px;">Fade:</span>
+        <input type="range" id="fadeSlider" class="slider" min="0.1" max="10" step="0.1" value="5.5" title="Fade Speed">
+        <span id="fadeDisplay" class="display">5.5</span>
+    </div>
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const speedSlider = document.getElementById('speedSlider');
+        const lineSlider = document.getElementById('lineSlider');
+        const fadeSlider = document.getElementById('fadeSlider');
+        const speedDisplay = document.getElementById('speedDisplay');
+        const fadeDisplay = document.getElementById('fadeDisplay');
+
+        let speedMultiplier = 0.15;
+        let fadeSpeed = 0.55; // Corresponding to the default value
+
+        // Set a random initial fade value
+        const randomFadeValue = Math.random() * 4 + 3.5; // Generates a number between 3.5 and 7.5
+        fadeSlider.value = randomFadeValue.toFixed(1);
+        fadeDisplay.textContent = randomFadeValue.toFixed(1);
+        fadeSpeed = randomFadeValue / 10;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        speedSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            speedMultiplier = value / 100;
+            speedDisplay.textContent = value + '%';
+        });
+
+        fadeSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            fadeSpeed = value / 10;
+            fadeDisplay.textContent = value.toFixed(1);
+        });
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.life = Math.random() * 100 + 50;
+                this.maxLife = this.life;
+                this.size = Math.random() * 3 + 1;
+                this.hue = Math.random() * 60 + 180;
+            }
+
+            update() {
+                this.x += this.vx * speedMultiplier;
+                this.y += this.vy * speedMultiplier;
+                this.life -= speedMultiplier;
+
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+
+                if (this.life < 0) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 50%, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Wave {
+            constructor(type = 'normal') {
+                this.points = [];
+                this.controlPoints = [];
+                this.numPoints = 150;
+                this.wavelength = Math.random() * 200 + 100;
+                this.amplitude = type === 'super' ? (Math.random() * 180 + 180) :
+                                type === 'enhanced' ? (Math.random() * 120 + 120) :
+                                Math.random() * 100 + 60;
+                this.speed = Math.random() * 0.02 + 0.01;
+                this.baseHue = Math.random() * 360;
+                this.hueSpeed = (Math.random() * 0.2 + 0.1) * (Math.random() < 0.5 ? 1 : -1);
+                this.hue = this.baseHue;
+                this.offset = 0;
+                this.type = type;
+                this.frequency = Math.random() * 0.02 + 0.015;
+                this.phase = Math.random() * Math.PI * 2;
+                this.highFreqComponent = Math.random() * 0.08 + 0.06;
+                this.tensionFactor = Math.random() * 0.5 + 1.5;
+
+                this.initializePoints();
+            }
+
+            initializePoints() {
+                this.points = [];
+                this.controlPoints = [];
+                
+                for (let i = 0; i < this.numPoints; i++) {
+                    const x = (canvas.width * i) / (this.numPoints - 1);
+                    this.points.push({ x, y: 0 });
+                    
+                    if (i < this.numPoints - 1) {
+                        this.controlPoints.push({
+                            cp1: { x: 0, y: 0 },
+                            cp2: { x: 0, y: 0 }
+                        });
+                    }
+                }
+            }
+
+            update() {
+                this.offset += this.speed * speedMultiplier;
+                this.hue = (this.hue + this.hueSpeed * speedMultiplier) % 360;
+                if (this.hue < 0) this.hue += 360;
+                
+                for (let i = 0; i < this.numPoints; i++) {
+                    const x = (canvas.width * i) / (this.numPoints - 1);
+                    const time = this.offset + (i * this.frequency);
+                    
+                    const baseWave = Math.sin(time * this.tensionFactor + this.phase) * this.amplitude;
+                    const highFreqWave = Math.sin(time * this.highFreqComponent * 8) * (this.amplitude * 0.4);
+                    const mediumFreqWave = Math.sin(time * this.highFreqComponent * 4) * (this.amplitude * 0.2);
+                    
+                    const y = baseWave + highFreqWave + mediumFreqWave;
+                    this.points[i] = { x, y: y + canvas.height / 2 };
+                }
+
+                for (let i = 0; i < this.numPoints - 1; i++) {
+                    const current = this.points[i];
+                    const next = this.points[i + 1];
+                    const dx = (next.x - current.x) * 0.5;
+                    
+                    this.controlPoints[i] = {
+                        cp1: {
+                            x: current.x + dx / 3,
+                            y: current.y + (Math.sin(this.offset + i * 0.1) * 20)
+                        },
+                        cp2: {
+                            x: next.x - dx / 3,
+                            y: next.y + (Math.sin(this.offset + (i + 1) * 0.1) * 20)
+                        }
+                    };
+                }
+            }
+
+            draw() {
+                const baseColor = `hsl(${this.hue}, 100%, 50%)`;
+                const glowColor = `hsl(${this.hue}, 100%, 70%)`;
+                
+                ctx.strokeStyle = baseColor;
+                ctx.lineWidth = 2;
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = 15;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+                
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 50%, 0.8)`;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 50%, 0.8)`;
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, this.points[0].y);
+                const points = this.points;
+                const cps = this.controlPoints;
+                for (let i = 0; i < points.length - 1; i++) {
+                    const cp = cps[i];
+                    const next = points[i + 1];
+                    ctx.bezierCurveTo(
+                        cp.cp1.x, cp.cp1.y,
+                        cp.cp2.x, cp.cp2.y,
+                        next.x, next.y
+                    );
+                }
+                ctx.stroke();
+
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 90%, 1.0)`;
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                for (let i = 0; i < points.length - 1; i++) {
+                    const cp = cps[i];
+                    const next = points[i + 1];
+                    ctx.bezierCurveTo(
+                        cp.cp1.x, cp.cp1.y,
+                        cp.cp2.x, cp.cp2.y,
+                        next.x, next.y
+                    );
+                }
+                ctx.stroke();
+            }
+        }
+
+        class WaveParticle {
+            constructor(wave) {
+                this.reset(wave);
+            }
+
+            reset(wave) {
+                const pointIndex = Math.floor(Math.random() * wave.points.length);
+                const point = wave.points[pointIndex];
+                
+                this.x = point.x;
+                this.y = point.y;
+                this.x += (Math.random() - 0.5) * 20;
+                this.y += (Math.random() - 0.5) * 20;
+                
+                this.vx = (Math.random() - 0.5) * 1;
+                this.vy = (Math.random() - 0.5) * 1;
+                this.life = Math.random() * 30 + 10;
+                this.maxLife = this.life;
+                this.size = Math.random() * 2 + 0.5;
+                this.wave = wave;
+                this.hue = wave.hue + (Math.random() - 0.5) * 20;
+            }
+
+            update() {
+                this.x += this.vx * speedMultiplier;
+                this.y += this.vy * speedMultiplier;
+                this.life -= speedMultiplier;
+
+                if (this.life < 0) {
+                    this.reset(this.wave);
+                }
+            }
+
+            draw() {
+                const alpha = (this.life / this.maxLife) * 0.7;
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 2
+                );
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${alpha})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 70%, 0)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Background gradient types
+        const gradientTypes = ['linear', 'radial', 'conic'];
+        let currentBackgroundGradient = null;
+
+        function createBackgroundGradient() {
+            const type = gradientTypes[Math.floor(Math.random() * gradientTypes.length)];
+            const darkColor = `hsl(${Math.random() * 360}, 50%, 10%)`;
+            const baseColor = `hsl(${Math.random() * 360}, 30%, 20%)`;
+            
+            switch(type) {
+                case 'linear':
+                    const angle = Math.random() * 360;
+                    currentBackgroundGradient = ctx.createLinearGradient(0, 0, 
+                        Math.cos(angle * Math.PI / 180) * canvas.width, 
+                        Math.sin(angle * Math.PI / 180) * canvas.height);
+                    currentBackgroundGradient.addColorStop(0, darkColor);
+                    currentBackgroundGradient.addColorStop(1, baseColor);
+                    break;
+                case 'radial':
+                    currentBackgroundGradient = ctx.createRadialGradient(
+                        canvas.width / 2, canvas.height / 2, 0,
+                        canvas.width / 2, canvas.height / 2, 
+                        Math.max(canvas.width, canvas.height)
+                    );
+                    currentBackgroundGradient.addColorStop(0, darkColor);
+                    currentBackgroundGradient.addColorStop(1, baseColor);
+                    break;
+                case 'conic':
+                    currentBackgroundGradient = ctx.createConicGradient(
+                        Math.random() * Math.PI * 2, 
+                        canvas.width / 2, 
+                        canvas.height / 2
+                    );
+                    currentBackgroundGradient.addColorStop(0, darkColor);
+                    currentBackgroundGradient.addColorStop(0.5, baseColor);
+                    currentBackgroundGradient.addColorStop(1, darkColor);
+                    break;
+            }
+        }
+
+        createBackgroundGradient();
+
+        const particles = Array(100).fill().map(() => new Particle());
+        let waves = Array(8).fill().map((_, index) => {
+            if (index === 0) {
+                // Extremely large wave for background clearing
+                const superWave = new Wave('super');
+                superWave.amplitude *= 3; // Much larger amplitude
+                superWave.speed *= 0.375; // Even slower movement (half of previous speed)
+                superWave.wavelength *= 2; // Double the interval
+                return superWave;
+            } else if (index === 1) {
+                // Second large wave, about 60% the size of the first
+                const secondWave = new Wave('super');
+                secondWave.amplitude *= (3 * 0.6); // 60% of the largest wave
+                secondWave.speed *= 0.5; // Relatively slow
+                return secondWave;
+            } else if (index === 2 || index === 3) {
+                return new Wave('enhanced');
+            } else {
+                return new Wave('normal');
+            }
+        });
+
+        let waveParticles = waves.flatMap(wave => {
+            const count = wave.type === 'super' ? 60 :
+                         wave.type === 'enhanced' ? 40 : 20;
+            return Array(count).fill().map(() => new WaveParticle(wave));
+        });
+
+        lineSlider.addEventListener('input', (e) => {
+            const newCount = parseInt(e.target.value);
+            if (newCount > waves.length) {
+                while (waves.length < newCount) {
+                    let type = 'normal';
+                    if (waves.length % 10 === 0) {
+                        type = 'super';
+                    } else if (waves.length % 4 === 0) {
+                        type = 'enhanced';
+                    }
+                    const newWave = new Wave(type);
+                    waves.push(newWave);
+                    const particleCount = type === 'super' ? 60 :
+                                        type === 'enhanced' ? 40 : 20;
+                    const newParticles = Array(particleCount).fill().map(() => new WaveParticle(newWave));
+                    waveParticles = [...waveParticles, ...newParticles];
+                }
+            } else {
+                waves = waves.slice(0, newCount);
+                waveParticles = waves.flatMap(wave => {
+                    const count = wave.type === 'super' ? 60 :
+                                wave.type === 'enhanced' ? 40 : 20;
+                    return Array(count).fill().map(() => new WaveParticle(wave));
+                });
+            }
+        });
+
+        let lastFrame = performance.now();
+        function animate(currentTime) {
+            const deltaTime = currentTime - lastFrame;
+            lastFrame = currentTime;
+            
+            // Use fade slider for softer clearing
+            ctx.fillStyle = `rgba(0, 0, 0, ${fadeSpeed})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            waves.forEach(wave => {
+                wave.update();
+                wave.draw();
+            });
+
+            waveParticles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
