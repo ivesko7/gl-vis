@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: rgb(0, 0, 0);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(20, 20, 35, 0.7);
+            padding: 15px 20px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        #controls:hover {
+            background: rgba(25, 25, 45, 0.8);
+            transform: translateY(-2px);
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .slider {
+            width: 140px;
+            height: 4px;
+            accent-color: #6e9fff;
+            opacity: 0.85;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .slider:hover {
+            opacity: 1;
+            accent-color: #89b4ff;
+        }
+        .display {
+            color: #fff;
+            font-size: 12px;
+            opacity: 0.9;
+            min-width: 40px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        label {
+            color: #fff;
+            font-size: 12px;
+            opacity: 0.9;
+            white-space: nowrap;
+        }
+        .separator {
+            width: 1px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 5px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <div id="controls">
+        <div class="control-group">
+            <label for="speedSlider">Speed</label>
+            <input type="range" id="speedSlider" class="slider" min="0.5" max="300" value="40" title="Speed">
+            <span id="speedDisplay" class="display">40%</span>
+        </div>
+        
+        <div class="separator"></div>
+        
+        <div class="control-group">
+            <label for="lineSlider">Waves</label>
+            <input type="range" id="lineSlider" class="slider" min="1" max="30" value="5" title="Waves">
+            <span id="waveDisplay" class="display">5</span>
+        </div>
+        
+        <div class="separator"></div>
+        
+        <div class="control-group">
+            <label for="fadeSlider">Trail</label>
+            <input type="range" id="fadeSlider" class="slider" min="0.01" max="0.2" step="0.01" value="0.14" title="Trail Length">
+            <span id="fadeDisplay" class="display">0.14</span>
+        </div>
+
+        <div class="separator"></div>
+        
+        <div class="control-group">
+            <label for="particleSlider">Particles</label>
+            <input type="range" id="particleSlider" class="slider" min="0" max="200" value="50" title="Particle Count">
+            <span id="particleDisplay" class="display">50</span>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const speedSlider = document.getElementById('speedSlider');
+        const lineSlider = document.getElementById('lineSlider');
+        const fadeSlider = document.getElementById('fadeSlider');
+        const particleSlider = document.getElementById('particleSlider');
+        const speedDisplay = document.getElementById('speedDisplay');
+        const fadeDisplay = document.getElementById('fadeDisplay');
+        const waveDisplay = document.getElementById('waveDisplay');
+        const particleDisplay = document.getElementById('particleDisplay');
+
+        let speedMultiplier = 0.4;
+        let fadeSpeed = 0.14;
+        let isBoostActive = false;
+        let boostIntensity = 0;
+        const BOOST_MAX = 1.0;
+        const BOOST_DECAY = 0.98;
+
+        // Particle System
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = (Math.random() - 0.5) * 2;
+                this.life = Math.random() * 0.8 + 0.2;
+                this.hue = Math.random() * 60 + 200; // Blue-ish hues
+                this.opacity = Math.random() * 0.5 + 0.5;
+            }
+
+            update() {
+                this.x += this.speedX * speedMultiplier;
+                this.y += this.speedY * speedMultiplier;
+                this.life -= 0.01 * speedMultiplier;
+                this.opacity = this.life;
+
+                if (this.life <= 0 || this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                    this.reset();
+                }
+
+                // Interact with waves
+                waves.forEach(wave => {
+                    const waveY = wave.getYAtX(this.x);
+                    const distance = Math.abs(this.y - waveY);
+                    if (distance < 50) {
+                        const force = (50 - distance) / 50;
+                        this.speedY += (waveY - this.y) * force * 0.02;
+                    }
+                });
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${this.opacity})`;
+                ctx.fill();
+
+                // Add glow effect
+                ctx.shadowColor = `hsla(${this.hue}, 80%, 60%, ${this.opacity})`;
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        let particles = [];
+
+        function updateParticleCount(count) {
+            const currentCount = particles.length;
+            if (count > currentCount) {
+                for (let i = 0; i < count - currentCount; i++) {
+                    particles.push(new Particle());
+                }
+            } else if (count < currentCount) {
+                particles = particles.slice(0, count);
+            }
+        }
+
+        particleSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            particleDisplay.textContent = value;
+            updateParticleCount(value);
+        });
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            ctx.scale(dpr, dpr);
+            canvas.style.width = `${window.innerWidth}px`;
+            canvas.style.height = `${window.innerHeight}px`;
+        }
+        
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                isBoostActive = true;
+                boostIntensity = BOOST_MAX;
+                boostGlowIntensity = 1.0;
+                
+                waves.forEach(wave => {
+                    if (!wave.originalValues) {
+                        wave.originalValues = {
+                            amplitude: wave.amplitude,
+                            speed: wave.speed,
+                            hueSpeed: wave.hueSpeed,
+                            tensionFactor: wave.tensionFactor
+                        };
+                    }
+                    
+                    wave.amplitude *= 1.3;
+                    wave.speed *= 1.2;
+                    wave.hueSpeed *= 2.5;
+                    wave.tensionFactor *= 2;
+                    wave.boostTime = 0;
+                });
+
+                // Boost particles
+                particles.forEach(particle => {
+                    particle.speedX *= 1.5;
+                    particle.speedY *= 1.5;
+                    particle.size *= 1.2;
+                });
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                isBoostActive = false;
+                
+                waves.forEach(wave => {
+                    if (wave.originalValues) {
+                        wave.amplitude = wave.originalValues.amplitude;
+                        wave.speed = wave.originalValues.speed;
+                        wave.hueSpeed = wave.originalValues.hueSpeed;
+                        wave.tensionFactor = wave.originalValues.tensionFactor;
+                    }
+                });
+
+                // Reset particle speeds
+                particles.forEach(particle => {
+                    particle.speedX /= 1.5;
+                    particle.speedY /= 1.5;
+                    particle.size /= 1.2;
+                });
+            }
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            speedMultiplier = value / 100;
+            speedDisplay.textContent = value + '%';
+        });
+
+        fadeSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            fadeSpeed = value;
+            fadeDisplay.textContent = value.toFixed(2);
+        });
+
+        lineSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            waveDisplay.textContent = value;
+            updateWaveCount(value);
+        });
+
+        class Wave {
+            constructor(type = 'normal') {
+                this.reset(type);
+            }
+
+            reset(type) {
+                this.points = [];
+                this.controlPoints = [];
+                this.numPoints = 200;
+                this.type = type;
+                
+                if (type === 'super') {
+                    this.amplitude = Math.random() * 200 + 250;
+                    this.speed = Math.random() * 0.01 + 0.005;
+                    this.frequency = Math.random() * 0.01 + 0.008;
+                } else if (type === 'enhanced') {
+                    this.amplitude = Math.random() * 150 + 150;
+                    this.speed = Math.random() * 0.015 + 0.01;
+                    this.frequency = Math.random() * 0.015 + 0.01;
+                } else {
+                    this.amplitude = Math.random() * 100 + 80;
+                    this.speed = Math.random() * 0.02 + 0.015;
+                    this.frequency = Math.random() * 0.02 + 0.015;
+                }
+
+                this.baseHue = Math.random() * 360;
+                this.hueSpeed = (Math.random() * 0.15 + 0.05) * (Math.random() < 0.5 ? 1 : -1);
+                this.hue = this.baseHue;
+                this.offset = Math.random() * Math.PI * 2;
+                this.phase = Math.random() * Math.PI * 2;
+                this.tensionFactor = Math.random() * 0.3 + 1.2;
+
+                this.initializePoints();
+            }
+
+            getYAtX(x) {
+                // Find the closest point to the given x coordinate
+                const index = Math.floor((x / canvas.width) * (this.numPoints - 1));
+                if (index >= 0 && index < this.points.length) {
+                    return this.points[index].y;
+                }
+                return canvas.height / 2;
+            }
+
+            initializePoints() {
+                this.points = [];
+                this.controlPoints = [];
+                
+                for (let i = 0; i < this.numPoints; i++) {
+                    const x = (canvas.width * i) / (this.numPoints - 1);
+                    this.points.push({ x, y: 0 });
+                    
+                    if (i < this.numPoints - 1) {
+                        this.controlPoints.push({
+                            cp1: { x: 0, y: 0 },
+                            cp2: { x: 0, y: 0 }
+                        });
+                    }
+                }
+            }
+
+            update() {
+                this.offset += this.speed * speedMultiplier;
+                this.hue = (this.hue + this.hueSpeed * speedMultiplier) % 360;
+                if (this.hue < 0) this.hue += 360;
+                
+                if (isBoostActive) {
+                    this.boostTime = (this.boostTime || 0) + speedMultiplier;
+                }
+                
+                for (let i = 0; i < this.numPoints; i++) {
+                    const x = (canvas.width * i) / (this.numPoints - 1);
+                    const time = this.offset + (i * this.frequency);
+                    
+                    const baseWave = Math.sin(time * this.tensionFactor + this.phase) * this.amplitude;
+                    const highFreqWave = Math.sin(time * 8) * (this.amplitude * 0.2);
+                    const mediumFreqWave = Math.sin(time * 4) * (this.amplitude * 0.1);
+                    
+                    let y = baseWave + highFreqWave + mediumFreqWave;
+                    
+                    if (isBoostActive) {
+                        const wiggleEffect = Math.sin(this.boostTime * 2 + i * 0.1) * 15;
+                        y += wiggleEffect;
+                    }
+                    
+                    this.points[i] = { x, y: y + canvas.height / 2 };
+                }
+
+                this.updateControlPoints();
+            }
+
+            updateControlPoints() {
+                for (let i = 0; i < this.numPoints - 1; i++) {
+                    const current = this.points[i];
+                    const next = this.points[i + 1];
+                    const dx = (next.x - current.x) * 0.5;
+                    
+                    const tension = 0.3 + Math.sin(this.offset * 0.5 + i * 0.1) * 0.1;
+                    
+                    this.controlPoints[i] = {
+                        cp1: {
+                            x: current.x + dx * tension,
+                            y: current.y + Math.sin(this.offset + i * 0.1) * 15
+                        },
+                        cp2: {
+                            x: next.x - dx * tension,
+                            y: next.y + Math.sin(this.offset + (i + 1) * 0.1) * 15
+                        }
+                    };
+                }
+            }
+
+            draw() {
+                const extraGlow = boostGlowIntensity * 20;
+                
+                const saturation = this.type === 'super' ? '95%' : 
+                                 this.type === 'enhanced' ? '90%' : '85%';
+                const lightness = this.type === 'super' ? (65 + extraGlow) + '%' : 
+                                this.type === 'enhanced' ? (60 + extraGlow) + '%' : 
+                                (55 + extraGlow) + '%';
+                
+                ctx.strokeStyle = `hsl(${this.hue}, ${saturation}, ${lightness})`;
+                ctx.lineWidth = this.type === 'super' ? 3 :
+                               this.type === 'enhanced' ? 2.5 : 2;
+                               
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 70%)`;
+                ctx.shadowBlur = this.type === 'super' ? 25 :
+                                this.type === 'enhanced' ? 20 : 15;
+                
+                this.drawWavePath();
+                
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 85%, 0.5)`;
+                ctx.lineWidth *= 0.5;
+                ctx.shadowBlur *= 0.5;
+                this.drawWavePath();
+            }
+
+            drawWavePath() {
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, this.points[0].y);
+                
+                for (let i = 0; i < this.points.length - 1; i++) {
+                    const cp = this.controlPoints[i];
+                    const next = this.points[i + 1];
+                    ctx.bezierCurveTo(
+                        cp.cp1.x, cp.cp1.y,
+                        cp.cp2.x, cp.cp2.y,
+                        next.x, next.y
+                    );
+                }
+                
+                ctx.stroke();
+            }
+        }
+
+        let waves = [];
+        let boostGlowIntensity = 0;
+        const GLOW_DECAY = 0.95;
+
+        function updateWaveCount(count) {
+            count = Math.floor(count);
+            const newWaves = [];
+            
+            for (let i = 0; i < count; i++) {
+                if (i < waves.length) {
+                    newWaves.push(waves[i]);
+                } else {
+                    let type = 'normal';
+                    if (i === 0) type = 'super';
+                    else if (i === 1) type = 'enhanced';
+                    else if (i % 5 === 0) type = 'enhanced';
+                    
+                    newWaves.push(new Wave(type));
+                }
+            }
+            
+            waves = newWaves;
+        }
+
+        // Initialize waves and particles
+        const initialWaveCount = parseInt(lineSlider.value);
+        updateWaveCount(initialWaveCount);
+        updateParticleCount(parseInt(particleSlider.value));
+
+        function animate() {
+            if (isBoostActive || boostIntensity > 0 || boostGlowIntensity > 0.01) {
+                const boostColor = `rgba(${40 * boostIntensity}, ${20 * boostIntensity}, ${60 * boostIntensity}, ${fadeSpeed})`;
+                ctx.fillStyle = boostColor;
+                boostIntensity *= BOOST_DECAY;
+                boostGlowIntensity *= GLOW_DECAY;
+            } else {
+                ctx.fillStyle = `rgba(0, 0, 0, ${fadeSpeed})`;
+            }
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw particles first (behind waves)
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // Then update and draw waves
+            waves.forEach(wave => {
+                wave.update();
+                wave.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
