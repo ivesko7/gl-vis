@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: rgb(0, 0, 0);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(20, 20, 35, 0.7);
+            padding: 15px 20px;
+            border-radius: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: opacity 0.3s ease;
+            max-width: 100%;
+        }
+        @media (max-width: 1756px) {
+            #controls {
+                flex-direction: column;
+                align-items: stretch;
+                max-width: calc(100% - 40px);
+                flex-wrap: nowrap;
+            }
+            .controls-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 15px;
+            }
+        }
+        #controls.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .slider {
+            width: 140px;
+            height: 4px;
+            accent-color: #6e9fff;
+            opacity: 0.85;
+        }
+        .display {
+            color: #fff;
+            font-size: 12px;
+            opacity: 0.9;
+            min-width: 40px;
+            text-align: right;
+        }
+        label {
+            color: #fff;
+            font-size: 12px;
+            opacity: 0.9;
+            white-space: nowrap;
+        }
+        .separator {
+            width: 1px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 5px;
+        }
+        .theme-select {
+            background: rgba(30, 30, 45, 0.7);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        #resetButton {
+            background: rgba(30, 30, 45, 0.7);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-left: 8px;
+        }
+        #resetButton:hover {
+            background: rgba(40, 40, 55, 0.8);
+        }
+        #toggleButton {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(20, 20, 35, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            transition: background-color 0.2s ease;
+        }
+        #toggleButton:hover {
+            background: rgba(30, 30, 45, 0.8);
+        }
+        #toggleButton svg {
+            width: 20px;
+            height: 20px;
+            stroke: rgba(255, 255, 255, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <div id="controls">
+        <div class="controls-row">
+            <div class="control-group">
+                <label for="themeSelect">Theme</label>
+                <select id="themeSelect" class="theme-select">
+                    <option value="original">Original</option>
+                    <option value="ocean">Ocean</option>
+                    <option value="sunset">Sunset</option>
+                    <option value="aurora">Aurora</option>
+                    <option value="dynamic">Dynamic</option>
+                    <option value="pastel">Pastel</option>
+                    <option value="dark">Dark</option>
+                    <option value="matrix">Matrix</option>
+                    <option value="synthwave">Synthwave</option>
+                </select>
+                <button id="resetButton">Reset Controls</button>
+            </div>
+
+            <div class="separator"></div>
+
+            <div class="control-group">
+                <label for="speedSlider">Speed</label>
+                <input type="range" id="speedSlider" class="slider" min="0.5" max="300" value="40">
+                <span id="speedDisplay" class="display">40%</span>
+            </div>
+        </div>
+
+        <div class="controls-row">
+            <div class="control-group">
+                <label for="lineSlider">Waves</label>
+                <input type="range" id="lineSlider" class="slider" min="0" max="10" value="5">
+                <span id="waveDisplay" class="display">5</span>
+            </div>
+
+            <div class="separator"></div>
+
+            <div class="control-group">
+                <label for="fadeSlider">Trail</label>
+                <input type="range" id="fadeSlider" class="slider" min="0.001" max="1.0" step="0.001" value="0.14">
+                <span id="fadeDisplay" class="display">0.14</span>
+            </div>
+        </div>
+
+        <div class="controls-row">
+            <div class="control-group">
+                <label for="amplitudeSlider">Height</label>
+                <input type="range" id="amplitudeSlider" class="slider" min="0.2" max="2.0" step="0.1" value="1.0">
+                <span id="amplitudeDisplay" class="display">1.0×</span>
+            </div>
+
+            <div class="separator"></div>
+
+            <div class="control-group">
+                <label for="particleSlider">Particles</label>
+                <input type="range" id="particleSlider" class="slider" min="0" max="1000" value="50">
+                <span id="particleDisplay" class="display">50</span>
+            </div>
+        </div>
+		
+        <div class="controls-row">
+            <div class="control-group">
+                <label for="wobbleSlider">Wobble</label>
+                <input type="range" id="wobbleSlider" class="slider" min="0.1" max="2.0" step="0.1" value="1.0">
+                <span id="wobbleDisplay" class="display">1.0×</span>
+            </div>
+
+            <div class="separator"></div>
+
+            <div class="control-group">
+                <label for="waveynessSlider">Waveyness</label>
+                <input type="range" id="waveynessSlider" class="slider" min="0.1" max="2.0" step="0.1" value="1.0">
+                <span id="waveynessDisplay" class="display">1.0×</span>
+            </div>
+        </div>
+    </div>
+    <button id="toggleButton">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+            <circle cx="12" cy="12" r="3"/>
+        </svg>
+    </button>
+    <script>
+        window.addEventListener('load', function() {
+            const themes = {
+                original: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: 180, max: 240 },
+                        saturation: 80,
+                        brightness: 60,
+                        speed: 0.2
+                    },
+                    particles: [
+                        '#87CEEB', '#B0E0E6', '#ADD8E6'
+                    ],
+                    background: 'rgb(0, 0, 0)'
+                },
+                ocean: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: 170, max: 220 },
+                        saturation: 85,
+                        brightness: 65,
+                        speed: 0.15
+                    },
+                    particles: [
+                        '#00FFFF', '#48D1CC', '#40E0D0'
+                    ],
+                    background: 'rgb(0, 20, 40)'
+                },
+                sunset: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: -20, max: 40 },
+                        saturation: 90,
+                        brightness: 70,
+                        speed: 0.1
+                    },
+                    particles: [
+                        '#FFD700', '#FFA500', '#FF6347'
+                    ],
+                    background: 'rgb(40, 0, 20)'
+                },
+                aurora: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: 80, max: 180 },
+                        saturation: 85,
+                        brightness: 65,
+                        speed: 0.3
+                    },
+                    particles: [
+                        '#98FB98', '#90EE90', '#00FA9A'
+                    ],
+                    background: 'rgb(0, 20, 20)'
+                },
+                dynamic: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: 0, max: 360 },
+                        saturation: 80,
+                        brightness: 60,
+                        speed: 0.5
+                    },
+                    particles: [
+                        '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF'
+                    ],
+                    background: 'rgb(0, 0, 0)'
+                },
+                pastel: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: 0, max: 360 },
+                        saturation: 65,
+                        brightness: 80,
+                        speed: 0.2
+                    },
+                    particles: [
+                        '#FFB3BA', '#BAFFC9', '#BAE1FF', '#FFFFBA', '#FFB5E8'
+                    ],
+                    background: 'rgb(0, 0, 0)'
+                },
+                dark: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: 200, max: 240 },
+                        saturation: 30,
+                        brightness: 40,
+                        speed: 0.1
+                    },
+                    particles: [
+                        '#4A5568', '#718096', '#A0AEC0'
+                    ],
+                    background: 'rgb(10, 15, 20)'
+                },
+                matrix: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: 100, max: 140 },
+                        saturation: 100,
+                        brightness: 50,
+                        speed: 0.1,  // Slowed down
+                        backgroundSpeed: 0.033  // 33% of normal speed
+                    },
+                    particles: [
+                        '#00FF41', '#008F11'
+                    ],
+                    background: 'rgb(0, 10, 0)'
+                },
+                synthwave: {
+                    isDynamic: true,
+                    waveColors: {
+                        hueRange: { min: 280, max: 360 },
+                        saturation: 100,
+                        brightness: 70,
+                        speed: 0.4
+                    },
+                    particles: [
+                        '#FF71CE', '#B967FF', '#01CDFE', '#05FFA1'
+                    ],
+                    background: 'rgb(20, 0, 40)'
+                }
+            };
+
+            const canvas = document.getElementById('visualizer');
+            const ctx = canvas.getContext('2d');
+            
+            let currentTheme = 'original';
+            let speedMultiplier = 0.4;
+            let fadeSpeed = 0.14;
+            let amplitudeMultiplier = 1.0;
+            let isBoostActive = false;
+            let isBoostLocked = false;  // New variable for boost lock
+            let boostIntensity = 0;
+            let boostGlowIntensity = 0;
+            let waves = [];
+            let particles = [];
+            let wobbleFactor = 1.0;  // New variable for wobble control
+            let waveyness = 1.0;     // New variable for waveyness control
+
+            // Add new sliders to variables
+            const wobbleSlider = document.getElementById('wobbleSlider');
+            const waveynessSlider = document.getElementById('waveynessSlider');
+            const wobbleDisplay = document.getElementById('wobbleDisplay');
+            const waveynessDisplay = document.getElementById('waveynessDisplay');
+
+            class Wave {
+                constructor(type = 'normal') {
+                    this.reset(type);
+                }
+
+				reset(type) {
+					this.points = [];
+					this.controlPoints = [];
+					this.numPoints = 200;
+					this.type = type;
+					
+					if (type === 'super-clearer') {
+						this.baseAmplitude = canvas.height / 2 - 20;
+						this.speed = 0.003;
+						this.frequency = 0.005;
+					} else if (type === 'super') {
+						this.baseAmplitude = Math.random() * 200 + 250;
+						this.speed = Math.random() * 0.01 + 0.005;
+						this.frequency = Math.random() * 0.01 + 0.008;
+					} else if (type === 'enhanced') {
+						this.baseAmplitude = Math.random() * 150 + 150;
+						this.speed = Math.random() * 0.015 + 0.01;
+						this.frequency = Math.random() * 0.015 + 0.01;
+					} else {
+						this.baseAmplitude = Math.random() * 100 + 80;
+						this.speed = Math.random() * 0.02 + 0.015;
+						this.frequency = Math.random() * 0.02 + 0.015;
+					}
+
+					this.offset = Math.random() * Math.PI * 2;
+					this.phase = Math.random() * Math.PI * 2;
+					// Initialize tension factor with wobble consideration
+					this.tensionFactor = (Math.random() * 0.3 + 1.2) * wobbleFactor;
+
+					const waveColors = themes[currentTheme].waveColors;
+					this.baseHue = Math.random() * (waveColors.hueRange.max - waveColors.hueRange.min) + waveColors.hueRange.min;
+					this.hue = this.baseHue;
+					this.hueSpeed = waveColors.speed * (Math.random() < 0.5 ? 1 : -1);
+					this.saturation = waveColors.saturation;
+					this.brightness = waveColors.brightness;
+
+					this.initializePoints();
+				}
+
+				update() {
+					const waveColors = themes[currentTheme].waveColors;
+					const minHue = waveColors.hueRange.min;
+					const maxHue = waveColors.hueRange.max;
+					
+					// Modify hue transition to be more gradual and reversing
+					this.hue += this.hueSpeed * speedMultiplier;
+					
+					// Check if hue is outside the allowed range
+					if (this.hue < minHue || this.hue > maxHue) {
+						// Reverse the hue direction instead of abruptly resetting
+						this.hueSpeed = -this.hueSpeed;
+						
+						// Ensure hue stays within bounds
+						if (this.hue < minHue) {
+							this.hue = minHue + (minHue - this.hue);
+						}
+						if (this.hue > maxHue) {
+							this.hue = maxHue - (this.hue - maxHue);
+						}
+					}
+					
+					this.offset += this.speed * speedMultiplier;
+					
+					if (isBoostActive) {
+						this.boostTime = (this.boostTime || 0) + speedMultiplier;
+					}
+					
+					// Updated wave generation with wobble and waveyness
+					for (let i = 0; i < this.numPoints; i++) {
+						const x = (canvas.width * i) / (this.numPoints - 1);
+						const time = this.offset + (i * this.frequency);
+						
+						// Apply wobble to the base wave
+						const baseWave = Math.sin(time * this.tensionFactor * wobbleFactor) 
+							* (this.baseAmplitude * amplitudeMultiplier);
+						
+						// Apply waveyness to the additional waves
+						const highFreqWave = Math.sin(time * 8 * waveyness) 
+							* (this.baseAmplitude * 0.2 * amplitudeMultiplier);
+						const mediumFreqWave = Math.sin(time * 4 * waveyness) 
+							* (this.baseAmplitude * 0.1 * amplitudeMultiplier);
+						
+						let y = baseWave;
+						
+						// Only add additional waves if waveyness is greater than 0.1
+						if (waveyness > 0.1) {
+							y += (highFreqWave + mediumFreqWave) * waveyness;
+						}
+						
+						// Add boost effect if active
+						if (isBoostActive) {
+							const wiggleEffect = Math.sin(this.boostTime * 2 + i * 0.1) * 15;
+							y += wiggleEffect;
+						}
+						
+						this.points[i] = { x, y: y + canvas.height / 2 };
+					}
+
+					this.updateControlPoints();
+				}
+
+                draw() {
+                    ctx.lineWidth = this.type === 'super' ? 3 :
+                                   this.type === 'enhanced' ? 2.5 : 2;
+                    
+                    ctx.strokeStyle = `hsl(${this.hue}, ${this.saturation}%, ${this.brightness}%)`;
+                    ctx.shadowColor = `hsl(${this.hue}, ${this.saturation}%, ${this.brightness + 10}%)`;
+                    ctx.shadowBlur = this.type === 'super' ? 25 :
+                                    this.type === 'enhanced' ? 20 : 15;
+                    
+                    this.drawWavePath();
+                    
+                    ctx.strokeStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.brightness + 20}%, 0.5)`;
+                    ctx.lineWidth *= 0.5;
+                    ctx.shadowBlur *= 0.5;
+                    this.drawWavePath();
+                }
+
+                drawWavePath() {
+                    ctx.beginPath();
+                    ctx.moveTo(this.points[0].x, this.points[0].y);
+                    
+                    for (let i = 0; i < this.points.length - 1; i++) {
+                        const cp = this.controlPoints[i];
+                        const next = this.points[i + 1];
+                        ctx.bezierCurveTo(
+                            cp.cp1.x, cp.cp1.y,
+                            cp.cp2.x, cp.cp2.y,
+                            next.x, next.y
+                        );
+                    }
+                    
+                    ctx.stroke();
+                }
+
+				initializePoints() {
+					this.points = [];
+					this.controlPoints = [];
+					
+					for (let i = 0; i < this.numPoints; i++) {
+						const x = (canvas.width * i) / (this.numPoints - 1);
+						this.points.push({ x, y: 0 });
+						
+						if (i < this.numPoints - 1) {
+							this.controlPoints.push({
+								cp1: { x: 0, y: 0 },
+								cp2: { x: 0, y: 0 }
+							});
+						}
+					}
+				}
+
+				updateControlPoints() {
+					for (let i = 0; i < this.numPoints - 1; i++) {
+						const current = this.points[i];
+						const next = this.points[i + 1];
+						const dx = (next.x - current.x) * 0.5;
+						
+						const tension = 0.3 + Math.sin(this.offset * 0.5 + i * 0.1) * 0.1;
+						
+						this.controlPoints[i] = {
+							cp1: {
+								x: current.x + dx * tension,
+								y: current.y + Math.sin(this.offset + i * 0.1) * 15
+							},
+							cp2: {
+								x: next.x - dx * tension,
+								y: next.y + Math.sin(this.offset + (i + 1) * 0.1) * 15
+							}
+						};
+					}
+				}
+
+				getYAtX(x) {
+					const index = Math.floor((x / canvas.width) * (this.numPoints - 1));
+					if (index >= 0 && index < this.points.length) {
+						return this.points[index].y;
+					}
+					return canvas.height / 2;
+				}
+            }
+
+            class Particle {
+                constructor() {
+                    this.reset();
+                }
+
+                reset() {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() * canvas.height;
+                    this.size = Math.random() * 3 + 1;
+                    
+                    if (currentTheme === 'matrix') {
+                        this.speedX = 0;
+                        this.speedY = Math.random() * 2 + 1;
+                        this.size = Math.random() * 4 + 2;
+                        this.life = Math.random() * 0.95 + 0.5;
+                    } else {
+                        this.speedX = (Math.random() - 0.5) * 2;
+                        this.speedY = (Math.random() - 0.5) * 2;
+                        this.life = Math.random() * 0.8 + 0.2;
+                    }
+                    
+                    this.opacity = Math.random() * 0.5 + 0.5;
+                    const theme = themes[currentTheme];
+                    this.color = theme.particles[Math.floor(Math.random() * theme.particles.length)];
+                }
+
+                update() {
+                    this.x += this.speedX * speedMultiplier;
+                    this.y += this.speedY * speedMultiplier;
+                    
+                    if (currentTheme === 'matrix') {
+                        if (this.y > canvas.height) {
+                            this.reset();
+                        }
+                        this.opacity = Math.min(1, this.y / (canvas.height * 0.2));
+                    } else {
+                        this.life -= 0.01 * speedMultiplier;
+                        this.opacity = this.life;
+
+                        if (this.life <= 0 || this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                            this.reset();
+                        }
+                    }
+
+                    if (currentTheme !== 'matrix') {
+                        waves.forEach(wave => {
+                            const waveY = wave.getYAtX(this.x);
+                            const distance = Math.abs(this.y - waveY);
+                            if (distance < 50) {
+                                const force = (50 - distance) / 50;
+                                this.speedY += (waveY - this.y) * force * 0.02;
+                            }
+                        });
+                    }
+                }
+
+                draw() {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    const rgb = this.hexToRgb(this.color);
+                    ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this.opacity})`;
+                    ctx.shadowColor = this.color;
+                    ctx.shadowBlur = 8;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+
+                hexToRgb(hex) {
+                    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                    return result ? {
+                        r: parseInt(result[1], 16),
+                        g: parseInt(result[2], 16),
+                        b: parseInt(result[3], 16)
+                    } : null;
+                }
+            }
+
+            function resizeCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = window.innerWidth * dpr;
+                canvas.height = window.innerHeight * dpr;
+                ctx.scale(dpr, dpr);
+                canvas.style.width = `${window.innerWidth}px`;
+                canvas.style.height = `${window.innerHeight}px`;
+            }
+			function updateWaveCount(count) {
+				count = Math.floor(count);
+				const newWaves = [];
+				
+				// Always add the screen-clearing wave first if count is greater than 0
+				if (count > 0) {
+					newWaves.push(new Wave('super-clearer'));
+					count -= 1;  // Subtract 1 from the specified count
+				}
+				
+				// Add the rest of the waves
+				for (let i = 0; i < count; i++) {
+					let type = 'normal';
+					if (i === 0 && count > 0) type = 'super';
+					else if (i === 1 && count > 1) type = 'enhanced';
+					else if (i % 5 === 0) type = 'enhanced';
+					
+					newWaves.push(new Wave(type));
+				}
+				
+				waves = newWaves;
+			}
+            function updateParticleCount(count) {
+                const currentCount = particles.length;
+                if (count > currentCount) {
+                    for (let i = 0; i < count - currentCount; i++) {
+                        particles.push(new Particle());
+                    }
+                } else if (count < currentCount) {
+                    particles = particles.slice(0, count);
+                }
+            }
+
+            // Cookie functions
+            function saveSettings() {
+                const settings = {
+                    theme: currentTheme,
+                    speed: parseFloat(speedSlider.value),
+                    waves: parseInt(lineSlider.value),
+                    fade: parseFloat(fadeSlider.value),
+                    amplitude: parseFloat(amplitudeSlider.value),
+                    particles: parseInt(particleSlider.value),
+                    controlsVisible: controlsVisible,
+                    wobble: parseFloat(wobbleSlider.value),
+                    waveyness: parseFloat(waveynessSlider.value)
+                };
+                localStorage.setItem('waveSettings', JSON.stringify(settings));
+            }
+
+			function loadSettings() {
+				try {
+					const savedSettings = localStorage.getItem('waveSettings');
+					if (savedSettings) {
+						const settings = JSON.parse(savedSettings);
+						
+						// Theme
+						currentTheme = settings.theme || 'original';
+						themeSelect.value = currentTheme;
+						document.body.style.background = themes[currentTheme].background;
+
+						// Speed
+						speedSlider.value = settings.speed || 40;
+						speedMultiplier = speedSlider.value / 100;
+						speedDisplay.textContent = speedSlider.value + '%';
+
+						// Waves
+						lineSlider.value = settings.waves || 5;
+						waveDisplay.textContent = lineSlider.value;
+
+						// Fade
+						fadeSlider.value = settings.fade || 0.14;
+						fadeSpeed = parseFloat(fadeSlider.value);
+						fadeDisplay.textContent = fadeSlider.value;
+
+						// Amplitude
+						amplitudeSlider.value = settings.amplitude || 1.0;
+						amplitudeMultiplier = parseFloat(amplitudeSlider.value);
+						amplitudeDisplay.textContent = amplitudeSlider.value + '×';
+
+						// Particles
+						particleSlider.value = settings.particles || 50;
+						particleDisplay.textContent = particleSlider.value;
+						
+                        wobbleSlider.value = settings.wobble || 1.0;
+                        wobbleFactor = parseFloat(wobbleSlider.value);
+                        wobbleDisplay.textContent = wobbleSlider.value + '×';
+
+                        waveynessSlider.value = settings.waveyness || 1.0;
+                        waveyness = parseFloat(waveynessSlider.value);
+                        waveynessDisplay.textContent = waveynessSlider.value + '×';
+
+						// Controls visibility (default to hidden if not specified)
+						controlsVisible = settings.controlsVisible ?? false;
+					} else {
+						// No saved settings, default to hidden
+						controlsVisible = false;
+					}
+
+					// Apply initial visibility state
+					if (!controlsVisible) {
+						controls.classList.add('hidden');
+						toggleButton.querySelector('svg').style.transform = 'scale(-1, 1)';
+					}
+				} catch (e) {
+					console.error('Error loading settings:', e);
+					// Fallback to hidden if there's an error
+					controlsVisible = false;
+					controls.classList.add('hidden');
+					toggleButton.querySelector('svg').style.transform = 'scale(-1, 1)';
+				}
+			}
+
+            const resetButton = document.getElementById('resetButton');
+
+            function resetToDefaults() {
+                // Default values
+                speedSlider.value = 40;
+                speedMultiplier = 0.4;
+                speedDisplay.textContent = '40%';
+
+                lineSlider.value = 5;
+                waveDisplay.textContent = '5';
+
+                fadeSlider.value = 0.14;
+                fadeSpeed = 0.14;
+                fadeDisplay.textContent = '0.14';
+
+                amplitudeSlider.value = 1.0;
+                amplitudeMultiplier = 1.0;
+                amplitudeDisplay.textContent = '1.0×';
+
+                particleSlider.value = 50;
+                particleDisplay.textContent = '50';
+
+                // Update waves and particles
+                updateWaveCount(5);
+                updateParticleCount(50);
+				
+                wobbleSlider.value = 1.0;
+                wobbleFactor = 1.0;
+                wobbleDisplay.textContent = '1.0×';
+
+                waveynessSlider.value = 1.0;
+                waveyness = 1.0;
+                waveynessDisplay.textContent = '1.0×';
+
+                // Deactivate boost if locked
+                if (isBoostLocked) {
+                    isBoostLocked = false;
+                    deactivateBoost();
+                }
+
+                // Update waves and particles
+                updateWaveCount(parseInt(lineSlider.value));
+                updateParticleCount(parseInt(particleSlider.value));
+
+                saveSettings();
+            }
+
+            // Event Listeners
+            resetButton.addEventListener('click', resetToDefaults);
+            window.addEventListener('resize', resizeCanvas);
+
+            const controls = document.getElementById('controls');
+            const toggleButton = document.getElementById('toggleButton');
+            let controlsVisible = true;
+
+            toggleButton.addEventListener('click', () => {
+                controlsVisible = !controlsVisible;
+                controls.classList.toggle('hidden');
+                toggleButton.querySelector('svg').style.transform = controlsVisible ? 'none' : 'scale(-1, 1)';
+                saveSettings();
+            });
+			
+            // Add new event listeners for wobble and waveyness sliders
+            wobbleSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                wobbleFactor = value;
+                wobbleDisplay.textContent = value.toFixed(1) + '×';
+                saveSettings();
+            });
+
+            waveynessSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                waveyness = value;
+                waveynessDisplay.textContent = value.toFixed(1) + '×';
+                saveSettings();
+            });
+
+            // Add double-click handler for boost lock
+            canvas.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                isBoostLocked = !isBoostLocked;
+                
+                if (isBoostLocked) {
+                    activateBoost();
+                } else {
+                    deactivateBoost();
+                }
+            });
+			
+            // Add keyboard controls
+            window.addEventListener('keydown', (e) => {
+                const STEP = 0.1;
+                
+                switch(e.code) {
+                    case 'Space':
+                        if (!isBoostLocked) {
+                            e.preventDefault();
+                            activateBoost();
+                        }
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        wobbleFactor = Math.min(2.0, wobbleFactor + STEP);
+                        wobbleSlider.value = wobbleFactor;
+                        wobbleDisplay.textContent = wobbleFactor.toFixed(1) + '×';
+                        saveSettings();
+                        break;
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        wobbleFactor = Math.max(0.1, wobbleFactor - STEP);
+                        wobbleSlider.value = wobbleFactor;
+                        wobbleDisplay.textContent = wobbleFactor.toFixed(1) + '×';
+                        saveSettings();
+                        break;
+                    case 'ArrowRight':
+                        e.preventDefault();
+                        waveyness = Math.min(2.0, waveyness + STEP);
+                        waveynessSlider.value = waveyness;
+                        waveynessDisplay.textContent = waveyness.toFixed(1) + '×';
+                        saveSettings();
+                        break;
+                    case 'ArrowLeft':
+                        e.preventDefault();
+                        waveyness = Math.max(0.1, waveyness - STEP);
+                        waveynessSlider.value = waveyness;
+                        waveynessDisplay.textContent = waveyness.toFixed(1) + '×';
+                        saveSettings();
+                        break;
+                }
+            });
+
+            // Modified keyup handler
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'Space' && !isBoostLocked) {
+                    deactivateBoost();
+                }
+            });
+
+            speedSlider.addEventListener('input', (e) => {
+                const value = e.target.value;
+                speedMultiplier = value / 100;
+                speedDisplay.textContent = value + '%';
+                saveSettings();
+            });
+
+            fadeSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                fadeSpeed = value;
+                fadeDisplay.textContent = value.toFixed(2);
+                saveSettings();
+            });
+
+            lineSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                waveDisplay.textContent = value;
+                updateWaveCount(value);
+                saveSettings();
+            });
+
+            amplitudeSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                amplitudeMultiplier = value;
+                amplitudeDisplay.textContent = value.toFixed(1) + '×';
+                saveSettings();
+            });
+
+            particleSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                particleDisplay.textContent = value;
+                updateParticleCount(value);
+                saveSettings();
+            });
+
+            themeSelect.addEventListener('change', (e) => {
+                currentTheme = e.target.value;
+                document.body.style.background = themes[currentTheme].background;
+                
+                // Recreate waves and particles with new theme
+                const waveCount = waves.length;
+                const particleCount = particles.length;
+                waves = [];
+                particles = [];
+                updateWaveCount(waveCount);
+                updateParticleCount(particleCount);
+                saveSettings();
+            });
+
+		// New boost activation and deactivation functions
+			function activateBoost() {
+				if (!isBoostActive) {  // Only apply boost if not already active
+					isBoostActive = true;
+					boostIntensity = BOOST_MAX;
+					boostGlowIntensity = 1.0;
+					
+					waves.forEach(wave => {
+						if (!wave.originalValues) {
+							wave.originalValues = {
+								baseAmplitude: wave.baseAmplitude,
+								speed: wave.speed,
+								hueSpeed: wave.hueSpeed,
+								tensionFactor: wave.tensionFactor
+							};
+						}
+						
+						if (wave.type !== 'super-clearer') {  // Don't boost the clearer wave
+							wave.baseAmplitude *= 1.15;  // Reduced from 1.3
+							wave.speed *= 1.1;  // Reduced from 1.2
+							wave.hueSpeed *= 1.5;  // Reduced from 2.5
+							wave.tensionFactor *= 1.5;  // Reduced from 2
+							wave.boostTime = 0;
+						}
+					});
+
+					particles.forEach(particle => {
+						particle.speedX *= 1.2;  // Reduced from 1.5
+						particle.speedY *= 1.2;  // Reduced from 1.5
+						particle.size *= 1.1;    // Reduced from 1.2
+					});
+				}
+			}
+
+			function deactivateBoost() {
+				isBoostActive = false;
+				
+				waves.forEach(wave => {
+					if (wave.originalValues) {
+						wave.baseAmplitude = wave.originalValues.baseAmplitude;
+						wave.speed = wave.originalValues.speed;
+						wave.hueSpeed = wave.originalValues.hueSpeed;
+						wave.tensionFactor = wave.originalValues.tensionFactor;
+					}
+				});
+
+				particles.forEach(particle => {
+					particle.speedX /= 1.5;
+					particle.speedY /= 1.5;
+					particle.size /= 1.2;
+				});
+			}
+
+			// Modify existing keyboard event listeners
+			window.addEventListener('keydown', (e) => {
+				if (e.code === 'Space') {
+					e.preventDefault();
+					activateBoost();
+				}
+			});
+
+			window.addEventListener('keyup', (e) => {
+				if (e.code === 'Space') {
+					deactivateBoost();
+				}
+			});
+
+			// New mouse boost support
+			let isMouseDown = false;
+			canvas.addEventListener('mousedown', (e) => {
+				// Only activate on left mouse button
+				if (e.button === 0) {
+					isMouseDown = true;
+					activateBoost();
+				}
+			});
+
+			window.addEventListener('mouseup', (e) => {
+				// Deactivate on any mouse up
+				if (isMouseDown) {
+					isMouseDown = false;
+					deactivateBoost();
+				}
+			});
+
+			// Ensure boost is deactivated if mouse leaves the window
+			window.addEventListener('mouseleave', () => {
+				if (isMouseDown) {
+					isMouseDown = false;
+					deactivateBoost();
+				}
+			});
+
+            function animate() {
+                ctx.fillStyle = `rgba(0, 0, 0, ${fadeSpeed})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                particles.forEach(particle => {
+                    particle.update();
+                    particle.draw();
+                });
+
+                waves.forEach(wave => {
+                    wave.update();
+                    wave.draw();
+                });
+
+                requestAnimationFrame(animate);
+            }
+
+
+            // Initialize
+            resizeCanvas();
+            loadSettings();
+            updateWaveCount(parseInt(lineSlider.value));
+            updateParticleCount(parseInt(particleSlider.value));
+            animate();
+        });
+    </script>
+</body>
+</html>
